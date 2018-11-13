@@ -1,3 +1,4 @@
 p2papp*
 !p2papp.pro
 *.stash
+Makefile
