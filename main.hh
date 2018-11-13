@@ -6,8 +6,7 @@
 #include <QLineEdit>
 #include <QUdpSocket>
 
-class ChatDialog : public QDialog
-{
+class ChatDialog : public QDialog {
 	Q_OBJECT
 
 public:
@@ -21,8 +20,7 @@ private:
 	QLineEdit *textline;
 };
 
-class NetSocket : public QUdpSocket
-{
+class NetSocket : public QUdpSocket {
 	Q_OBJECT
 
 public:
