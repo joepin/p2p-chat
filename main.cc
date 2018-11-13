@@ -7,8 +7,7 @@
 
 #include "main.hh"
 
-ChatDialog::ChatDialog()
-{
+ChatDialog::ChatDialog() {
 	setWindowTitle("P2Papp");
 
 	// Read-only text box where we display messages from everyone.
@@ -38,8 +37,7 @@ ChatDialog::ChatDialog()
 		this, SLOT(gotReturnPressed()));
 }
 
-void ChatDialog::gotReturnPressed()
-{
+void ChatDialog::gotReturnPressed() {
 	// Initially, just echo the string locally.
 	// Insert some networking code here...
 	qDebug() << "FIX: send message to other peers: " << textline->text();
@@ -49,8 +47,7 @@ void ChatDialog::gotReturnPressed()
 	textline->clear();
 }
 
-NetSocket::NetSocket()
-{
+NetSocket::NetSocket() {
 	// Pick a range of four UDP ports to try to allocate by default,
 	// computed based on my Unix user ID.
 	// This makes it trivial for up to four P2Papp instances per user
@@ -62,8 +59,7 @@ NetSocket::NetSocket()
 	myPortMax = myPortMin + 3;
 }
 
-bool NetSocket::bind()
-{
+bool NetSocket::bind() {
 	// Try to bind to each of the range myPortMin..myPortMax in turn.
 	for (int p = myPortMin; p <= myPortMax; p++) {
 		if (QUdpSocket::bind(p)) {
@@ -77,8 +73,7 @@ bool NetSocket::bind()
 	return false;
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	// Initialize Qt toolkit
 	QApplication app(argc,argv);
 
