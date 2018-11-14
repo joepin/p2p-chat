@@ -7,9 +7,8 @@
 
 #include "main.hh"
 
-ChatDialog::ChatDialog() {
+ChatDialog::ChatDialog(NetSocket *s) {
 	setWindowTitle("P2Papp");
-
 	// Read-only text box where we display messages from everyone.
 	// This widget expands both horizontally and vertically.
 	textview = new QTextEdit(this);
@@ -31,20 +30,57 @@ ChatDialog::ChatDialog() {
 	layout->addWidget(textline);
 	setLayout(layout);
 
-	// Register a callback on the textline's returnPressed signal
-	// so that we can send the message entered by the user.
-	connect(textline, SIGNAL(returnPressed()),
-		this, SLOT(gotReturnPressed()));
+  sock = s;
+
+  // Register a callback on the textline's returnPressed signal
+  // so that we can send the message entered by the user.
+  connect(textline, SIGNAL(returnPressed()), this, SLOT(gotReturnPressed()));
+  connect(s, SIGNAL(readyRead()), this, SLOT(gotMessage()));
 }
 
 void ChatDialog::gotReturnPressed() {
+
+  QByteArray buf;
+  QDataStream s(&buf, QIODevice::ReadWrite);
+  QMap<QString, QVariant> message;
+
+  message["ChatText"] = textline->text();
+  s << message;
 	// Initially, just echo the string locally.
 	// Insert some networking code here...
 	qDebug() << "FIX: send message to other peers: " << textline->text();
 	textview->append(textline->text());
 
+  sock->writeDatagram(&buf);
+
 	// Clear the textline to get ready for the next input message.
 	textline->clear();
+}
+
+void ChatDialog::gotMessage() {
+  QMap<QString, QVariant> message;
+  NetSocket *sock = this->sock;
+
+  while (sock->hasPendingDatagrams()) {
+    QByteArray datagram;
+    datagram.resize(sock->pendingDatagramSize());
+    QHostAddress sender;
+    quint16 senderPort;
+
+    sock->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+
+    QDataStream stream(&datagram, QIODevice::ReadOnly);
+
+    stream >> message;
+
+    datagram.clear();
+  }
+
+  QString messageText = message["ChatText"].toString();
+  qDebug() << messageText;
+
+  textview->append(messageText);
+
 }
 
 NetSocket::NetSocket() {
@@ -57,6 +93,7 @@ NetSocket::NetSocket() {
 	// We use the range from 32768 to 49151 for this purpose.
 	myPortMin = 32768 + (getuid() % 4096)*4;
 	myPortMax = myPortMin + 3;
+  qDebug() << myPortMin << " - " << myPortMax;
 }
 
 bool NetSocket::bind() {
@@ -73,18 +110,22 @@ bool NetSocket::bind() {
 	return false;
 }
 
+qint64 NetSocket::writeDatagram(QByteArray *buf) {
+  return QUdpSocket::writeDatagram(*buf, QHostAddress::LocalHost, myPortMin + 1);
+}
+
 int main(int argc, char **argv) {
 	// Initialize Qt toolkit
 	QApplication app(argc,argv);
 
-	// Create an initial chat dialog window
-	ChatDialog dialog;
-	dialog.show();
+  // Create a UDP network socket
+  NetSocket *sock = new NetSocket();
+  if (!sock->bind())
+    exit(1);
 
-	// Create a UDP network socket
-	NetSocket sock;
-	if (!sock.bind())
-		exit(1);
+	// Create an initial chat dialog window
+	ChatDialog *dialog = new ChatDialog(sock);
+	dialog->show();
 
 	// Enter the Qt main loop; everything else is event driven
 	return app.exec();
