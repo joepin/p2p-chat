@@ -17,9 +17,12 @@ public:
   bool bind();
   // send data
   qint64 writeDatagram(QByteArray *buf);
+  QList<int> getAllNeighboringPorts();
 
 private:
-  int myPortMin, myPortMax;
+  int myPortMin;
+  int myPortMax;
+  int myPort;
 };
 
 

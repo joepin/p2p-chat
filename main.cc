@@ -101,6 +101,7 @@ bool NetSocket::bind() {
 	for (int p = myPortMin; p <= myPortMax; p++) {
 		if (QUdpSocket::bind(p)) {
 			qDebug() << "bound to UDP port " << p;
+      myPort = p;
 			return true;
 		}
 	}
@@ -110,8 +111,26 @@ bool NetSocket::bind() {
 	return false;
 }
 
+QList<int> NetSocket::getAllNeighboringPorts() {
+  QList<int> list;
+  for (int i = myPortMin; i < myPortMax; i++) {
+    if (i != myPort) {
+      list.append(i);
+    }
+  }
+  return list;
+}
+
 qint64 NetSocket::writeDatagram(QByteArray *buf) {
-  return QUdpSocket::writeDatagram(*buf, QHostAddress::LocalHost, myPortMin + 1);
+  QList<int> neighbors = this->getAllNeighboringPorts();
+  qint64 bytesSent;
+  for (int p : neighbors) {
+    if ((bytesSent = QUdpSocket::writeDatagram(*buf, QHostAddress::LocalHost, p)) < 0) {
+      return bytesSent;
+    }
+    bytesSent = 0;
+  }
+  return bytesSent;
 }
 
 int main(int argc, char **argv) {
