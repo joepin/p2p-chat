@@ -37,6 +37,8 @@ ChatDialog::ChatDialog(NetSocket *s) {
   origin = QString::number(qrand());
   qDebug() << "origin is " << origin;
 
+  seqNo = 1;
+
   // Register a callback on the textline's returnPressed signal
   // so that we can send the message entered by the user.
   connect(textline, SIGNAL(returnPressed()), this, SLOT(gotReturnPressed()));
@@ -44,26 +46,34 @@ ChatDialog::ChatDialog(NetSocket *s) {
 }
 
 void ChatDialog::gotReturnPressed() {
-
-  QByteArray buf;
-  QDataStream s(&buf, QIODevice::ReadWrite);
-  QMap<QString, QVariant> message;
-
-  message["ChatText"] = textline->text();
-  s << message;
 	// Initially, just echo the string locally.
 	// Insert some networking code here...
 	qDebug() << "FIX: send message to other peers: " << textline->text();
   textview->append(textline->text());
 
-  sock->writeDatagram(&buf);
+  sendRumorMessage(textline->text());
 
 	// Clear the textline to get ready for the next input message.
 	textline->clear();
 }
 
+void ChatDialog::sendRumorMessage(QString text) {
+  QByteArray buf;
+  QDataStream datastream(&buf, QIODevice::ReadWrite);
+  QVariantMap message;
+
+  message["ChatText"] = text;
+  message["Origin"] = origin;
+  message["SeqNo"] = seqNo++;
+
+  datastream << message;
+
+  sock->writeDatagram(&buf);
+
+}
+
 void ChatDialog::gotMessage() {
-  QMap<QString, QVariant> message;
+  QVariantMap message;
   NetSocket *sock = this->sock;
 
   while (sock->hasPendingDatagrams()) {
@@ -81,7 +91,10 @@ void ChatDialog::gotMessage() {
     datagram.clear();
   }
 
-  QString messageText = message["ChatText"].toString();
+  QString mText = message["ChatText"].toString();
+  QString mOrigin = message["Origin"].toString();
+  QString mSeqNo = message["SeqNo"].toString();
+  QString messageText = mText + " {" + mSeqNo + "@" + mOrigin + "}";
   qDebug() << messageText;
 
   textview->append(messageText);

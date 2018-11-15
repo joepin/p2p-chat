@@ -16,7 +16,7 @@ public:
   // Bind this socket to a P2Papp-specific default port.
   bool bind();
   // send data
-  qint64 writeDatagram(QByteArray *buf);
+  qint64 writeDatagram(QByteArray*);
   QList<int> getAllNeighboringPorts();
 
 private:
@@ -30,8 +30,9 @@ class ChatDialog : public QDialog {
 	Q_OBJECT
 
 public:
-	ChatDialog(NetSocket *s);
   NetSocket *sock;
+  ChatDialog(NetSocket*);
+  void sendRumorMessage(QString);
 
 public slots:
 	void gotReturnPressed();
@@ -41,6 +42,7 @@ private:
 	QTextEdit *textview;
 	QLineEdit *textline;
   QString origin;
+  qint32 seqNo;
 };
 
 #endif // P2PAPP_MAIN_HH
