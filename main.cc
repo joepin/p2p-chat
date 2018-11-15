@@ -9,35 +9,35 @@
 #include "main.hh"
 
 ChatDialog::ChatDialog(NetSocket *s) {
-	setWindowTitle("P2Papp");
-	// Read-only text box where we display messages from everyone.
-	// This widget expands both horizontally and vertically.
-	textview = new QTextEdit(this);
-	textview->setReadOnly(true);
+  // Read-only text box where we display messages from everyone.
+  // This widget expands both horizontally and vertically.
+  textview = new QTextEdit(this);
+  textview->setReadOnly(true);
 
-	// Small text-entry box the user can enter messages.
-	// This widget normally expands only horizontally,
-	// leaving extra vertical space for the textview widget.
-	//
-	// You might change this into a read/write QTextEdit,
-	// so that the user can easily enter multi-line messages.
-	textline = new QLineEdit(this);
+  // Small text-entry box the user can enter messages.
+  // This widget normally expands only horizontally,
+  // leaving extra vertical space for the textview widget.
+  //
+  // You might change this into a read/write QTextEdit,
+  // so that the user can easily enter multi-line messages.
+  textline = new QLineEdit(this);
 
-	// Lay out the widgets to appear in the main window.
-	// For Qt widget and layout concepts see:
-	// http://doc.qt.nokia.com/4.7-snapshot/widgets-and-layouts.html
-	QVBoxLayout *layout = new QVBoxLayout();
-	layout->addWidget(textview);
-	layout->addWidget(textline);
-	setLayout(layout);
+  // Lay out the widgets to appear in the main window.
+  // For Qt widget and layout concepts see:
+  // http://doc.qt.nokia.com/4.7-snapshot/widgets-and-layouts.html
+  QVBoxLayout *layout = new QVBoxLayout();
+  layout->addWidget(textview);
+  layout->addWidget(textline);
+  setLayout(layout);
 
   sock = s;
 
   qsrand((uint) QDateTime::currentMSecsSinceEpoch());
-  origin = QString::number(qrand());
-  qDebug() << "origin is " << origin;
+  myOrigin = QString::number(qrand());
+  qDebug() << "myOrigin is " << myOrigin;
+	setWindowTitle("P2Papp - " + myOrigin);
 
-  seqNo = 1;
+  mySeqNo = 1;
 
   // Register a callback on the textline's returnPressed signal
   // so that we can send the message entered by the user.
@@ -63,8 +63,8 @@ void ChatDialog::sendRumorMessage(QString text) {
   QVariantMap message;
 
   message["ChatText"] = text;
-  message["Origin"] = origin;
-  message["SeqNo"] = seqNo++;
+  message["Origin"] = myOrigin;
+  message["SeqNo"] = mySeqNo++;
 
   datastream << message;
 

@@ -31,6 +31,7 @@ class ChatDialog : public QDialog {
 
 public:
   NetSocket *sock;
+  QVariantMap allMessages;
   ChatDialog(NetSocket*);
   void sendRumorMessage(QString);
 
@@ -41,8 +42,8 @@ public slots:
 private:
 	QTextEdit *textview;
 	QLineEdit *textline;
-  QString origin;
-  qint32 seqNo;
+  QString myOrigin;
+  qint32 mySeqNo;
 };
 
 #endif // P2PAPP_MAIN_HH
