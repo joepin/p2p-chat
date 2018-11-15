@@ -40,6 +40,7 @@ public slots:
 private:
 	QTextEdit *textview;
 	QLineEdit *textline;
+  QString origin;
 };
 
 #endif // P2PAPP_MAIN_HH

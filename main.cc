@@ -4,6 +4,7 @@
 #include <QVBoxLayout>
 #include <QApplication>
 #include <QDebug>
+#include <QDateTime>
 
 #include "main.hh"
 
@@ -32,6 +33,10 @@ ChatDialog::ChatDialog(NetSocket *s) {
 
   sock = s;
 
+  qsrand((uint) QDateTime::currentMSecsSinceEpoch());
+  origin = QString::number(qrand());
+  qDebug() << "origin is " << origin;
+
   // Register a callback on the textline's returnPressed signal
   // so that we can send the message entered by the user.
   connect(textline, SIGNAL(returnPressed()), this, SLOT(gotReturnPressed()));
@@ -49,7 +54,7 @@ void ChatDialog::gotReturnPressed() {
 	// Initially, just echo the string locally.
 	// Insert some networking code here...
 	qDebug() << "FIX: send message to other peers: " << textline->text();
-	textview->append(textline->text());
+  textview->append(textline->text());
 
   sock->writeDatagram(&buf);
 
