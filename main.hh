@@ -7,7 +7,6 @@
 #include <QLineEdit>
 #include <QHostInfo>
 #include <QUdpSocket>
-#include <map>
 
 #define TIMEOUT 1
 #define ANTI_ENTROPY_TIME 10
@@ -37,9 +36,9 @@ class ChatDialog : public QDialog {
   Q_OBJECT
 
   // Mapping of sequence numbers to messages.
-  typedef std::map<qint32, QString> Messages;
+  typedef QMap<qint32, QString> Messages;
   // Mapping of origins to a map of sequence numbers and messages.
-  typedef std::map<QString, Messages> Origins;
+  typedef QMap<QString, Messages> Origins;
 
   public:
     NetSocket *sock;
@@ -59,6 +58,7 @@ class ChatDialog : public QDialog {
     QString myOrigin;
     qint32 mySeqNo;
     Origins originsMap;
+    QMap<QString, quint32> highestSeqNums;
 };
 
 ////////

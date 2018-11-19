@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QDebug>
 #include <QDateTime>
+#include <QPair>
 #include "main.hh"
 
 ////////
@@ -35,14 +36,17 @@ ChatDialog::ChatDialog(NetSocket *s) {
   sock = s;
 
   // Set unique identifier
-  QString hostname = QHostInfo::localHostName();
   qsrand((uint) QDateTime::currentMSecsSinceEpoch());
-  myOrigin = hostname + QString::number(qrand());
+  myOrigin = QString::number(qrand());
   qDebug() << "myOrigin is " << myOrigin;
   setWindowTitle("P2Papp - " + myOrigin);
 
   // Set sequence number beginning at 1
   mySeqNo = 1;
+
+  // initialize a map to save the highest sequence numbers seen so far
+  highestSeqNums = QMap<QString, quint32>();
+  highestSeqNums[myOrigin] = mySeqNo;
 
   // Register a callback on the textline's returnPressed signal
   // so that we can send the message entered by the user.
@@ -74,19 +78,23 @@ void ChatDialog::gotReturnPressed() {
 // Save input sent the chat window. 
 void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
   // Check if we store this origin already.
+  qDebug() << "highest seq num for origin " + origin + ": " + highestSeqNums[origin];
   if (originsMap.count(origin) > 0) {
     // Add entry to the messages mapping.
-    originsMap.at(origin).insert(std::pair<qint32, QString>(seq, text));
+    originsMap[origin][seq] = text;
+    highestSeqNums[origin] = seq;
     // prettyPrintMaps();
   } else {
     // We have not seen this origin before - create a new messages map.
     Messages messagesMap;
-    messagesMap.insert(std::pair<qint32, QString>(seq, text));
+    messagesMap[seq] = text;
 
     // Add the messages map to the corresponding origin
-    originsMap.insert(std::pair<QString, Messages>(origin, messagesMap));
+    originsMap[origin] = messagesMap;
+    highestSeqNums[origin] = seq;
     // prettyPrintMaps();
   }
+  qDebug() << "highest seq num for origin " + origin + ": " + highestSeqNums[origin];
 }
 
 // Serialize and propogate a rumor message.
@@ -140,7 +148,8 @@ void ChatDialog::gotMessage() {
       QString mText = message["ChatText"].toString();
       QString mOrigin = message["Origin"].toString();
       qint32 mSeqNo = message["SeqNo"].toInt();
-      QString messageText = mText + " {" + mSeqNo + "@" + mOrigin + "}";
+      QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
+      qDebug() << "messageText: " << messageText;
 
       qDebug() << "";
       qDebug() << "Received rumor: "
@@ -150,9 +159,9 @@ void ChatDialog::gotMessage() {
       qDebug() << "";
 
       // Check if we already have seen this message before.
-      if (originsMap.count(mOrigin) > 0 && originsMap.at(mOrigin).count(mSeqNo) > 0) {
-        if (originsMap.at(mOrigin).at(mSeqNo) != mText) {
-          qDebug() << originsMap.at(mOrigin).at(mSeqNo);
+      if (originsMap.count(mOrigin) > 0 && originsMap[mOrigin].count(mSeqNo) > 0) {
+        if (originsMap[mOrigin][mSeqNo] != mText) {
+          qDebug() << originsMap[mOrigin][mSeqNo];
           qDebug() << mText;
           qDebug() << "Duplicate/corrupt message receivied. Ignoring";
         } else {
@@ -179,11 +188,11 @@ void ChatDialog::gotMessage() {
 
 // Helper function to print the originsMap and corresponding the messagesMap.
 void ChatDialog::prettyPrintMaps() {
-  for (std::map<QString,Messages>::iterator it=originsMap.begin(); it!=originsMap.end(); ++it) {
-    qDebug() << it->first;
-    for (std::map<qint32,QString>::iterator it2=it->second.begin(); it2!=it->second.end(); ++it2) {
-      qDebug() << it2->first;
-      qDebug() << it2->second;
+  for (auto origin : originsMap.keys()) {
+    qDebug() << origin;
+    Messages messages = originsMap.value(origin);
+    for (auto message : messages.keys()) {
+      qDebug() << message << ", " << messages.value(message);
     }
   }
 }
