@@ -45,7 +45,7 @@ ChatDialog::ChatDialog(NetSocket *s) {
   mySeqNo = 1;
 
   // initialize a map to save the highest sequence numbers seen so far
-  highestSeqNums = QMap<QString, quint32>();
+  highestSeqNums = QVariantMap();
   highestSeqNums[myOrigin] = mySeqNo;
 
   // Register a callback on the textline's returnPressed signal
@@ -78,11 +78,15 @@ void ChatDialog::gotReturnPressed() {
 // Save input sent the chat window. 
 void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
   // Check if we store this origin already.
-  qDebug() << "highest seq num for origin " + origin + ": " + QString::number(highestSeqNums[origin]);
-  if (originsMap.count(origin) > 0) {
-    // Add entry to the messages mapping.
-    originsMap[origin][seq] = text;
-    highestSeqNums[origin] = seq;
+  qDebug() << "highest seq num for origin " + origin + ": " + QString::number(highestSeqNums[origin].toInt());
+  // check if we have this origin already
+  if (!originsMap[origin].isEmpty()) {
+    // check if the sequence number is the next sequentially
+    if (seq == highestSeqNums[origin].toInt() + 1) {
+      // it is - we're good to save it
+      originsMap[origin][seq] = text;
+      highestSeqNums[origin] = seq;
+    }
     // prettyPrintMaps();
   } else {
     // We have not seen this origin before - create a new messages map.
@@ -94,7 +98,7 @@ void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
     highestSeqNums[origin] = seq;
     // prettyPrintMaps();
   }
-  qDebug() << "highest seq num for origin " + origin + ": " + QString::number(highestSeqNums[origin]);
+  qDebug() << "highest seq num for origin " + origin + ": " + QString::number(highestSeqNums[origin].toInt());
 }
 
 // Serialize and propogate a rumor message.
@@ -124,22 +128,22 @@ void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text) {
 
 // Serialize and propogate a status message.
 void ChatDialog::sendStatusMessage(quint16 senderPort) {
+  QByteArray datagram;
+  QDataStream datastream(&datagram, QIODevice::ReadWrite);
+  QVariantMap message = QVariantMap();
+  QVariantMap originsToSeq = QVariantMap();
 
-  QByteArray buf;
-  QDataStream datastream(&buf, QIODevice::ReadWrite);
-  QMap<QString, QMap<QString, quint32>> message = QMap<QString, QMap<QString, quint32>>();
-  QMap<QString, quint32> wants = QMap<QString, quint32>();
-
-  for (auto origin : highestSeqNums.keys()) {
-    wants[origin] = highestSeqNums.value(origin) + 1;
+  for (auto o : highestSeqNums.keys()) {
+    originsToSeq[o] = highestSeqNums[o];
   }
 
-  message["Want"] = wants;
+  message["Want"] = originsToSeq;
 
   datastream << message;
-
+  qDebug() << "Sending status message to " << senderPort;
+  qDebug() << "Status message to be sent is " << message;
   // Send message to the socket. 
-  sock->writeDatagram(senderPort, &buf, buf.size());
+  sock->writeDatagram(senderPort, &datagram, datagram.size());
 }
 
 // Callback when receiving a message from the socket. 
@@ -160,54 +164,77 @@ void ChatDialog::gotMessage() {
 
     stream >> message;
 
+
+    qDebug() << "Message is " << message;
+
+    // Check if we have a status message
+    if (!message["Want"].isNull()) {
+      // we have a status message
+      handleStatusMessage(message, senderPort);
+    } else if (!message["ChatText"].isNull()) {
+      // we have a rumor message
+      handleRumorMessage(message, senderPort);
+    } else {
+      // corrupt or other message
+    }
+      
     datagram.clear();
-
-    // Check if we have a status message or a rumor message.
-    if (message["Want"].isNull()) {
-      // Serialize the rumor message. 
-      QString mText = message["ChatText"].toString();
-      QString mOrigin = message["Origin"].toString();
-      qint32 mSeqNo = message["SeqNo"].toInt();
-      QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
-      qDebug() << "messageText: " << messageText;
-
-      qDebug() << "";
-      qDebug() << "Received rumor: "
-        << "<\"ChatText\",\"" << mText
-        << "\"><\"Origin\",\"" << mOrigin
-        << "\"><\"SeqNo\",\"" << mSeqNo << "\">";
-      qDebug() << "";
-
-      // Check if we already have seen this message before.
-      if (originsMap.count(mOrigin) > 0 && originsMap[mOrigin].count(mSeqNo) > 0) {
-        if (originsMap[mOrigin][mSeqNo] != mText) {
-          qDebug() << originsMap[mOrigin][mSeqNo];
-          qDebug() << mText;
-          qDebug() << "Duplicate/corrupt message receivied. Ignoring";
-        } else {
-          qDebug() << "Duplicate message receivied. Ignoring";
-        }
-        continue;
-      }
-
-      // Save the message.
-      saveMessage(mOrigin, mSeqNo, mText);
-
-      // Send the rumor to neighbors.
-      sendRumorMessage(mOrigin, mSeqNo, mText);
-
-      // Send out a status message to the sender 
-      sendStatusMessage(senderPort);
-
-      // Display the message in the chat dialog window. 
-      textview->append(messageText);
     // @TODO:
     // - Respond to the status message.
-    } else {
+  }
+}
 
+void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
+  qDebug() << "we have a status message: " << m;
+  QMap<QString, QVariant> wantMap = m.value("Want").toMap();
+  qDebug() << "wantMap is " << wantMap;
+  for (auto mOrigin : wantMap.keys()) {
+    quint32 mSeqNo = wantMap.value(mOrigin).toInt();
+    qDebug() << "mOrigin: " << mOrigin << " value: " << mSeqNo;
+    if (highestSeqNums[mOrigin].toInt() == mSeqNo) {
+      // we have the same latest message as the status message, we can ignore
+      qDebug() << "equal";
+      continue;
+    }  else if (highestSeqNums[mOrigin].toInt() < mSeqNo) {
+      qDebug() << "less";
+      // we need the 
+    } else {
+      qDebug() << "greater";
     }
   }
 }
+
+void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
+  // serialize the rumor message
+    QString mText = m["ChatText"].toString();
+    QString mOrigin = m["Origin"].toString();
+    qint32 mSeqNo = m["SeqNo"].toInt();
+    QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
+    qDebug() << "messageText: " << messageText;
+
+    qDebug() << "";
+    qDebug() << "Received rumor: "
+      << "<\"ChatText\",\"" << mText
+      << "\"><\"Origin\",\"" << mOrigin
+      << "\"><\"SeqNo\",\"" << mSeqNo << "\">";
+    qDebug() << "";
+
+    // check that this sequence number is in the correct order
+    if (mSeqNo == highestSeqNums[mOrigin].toInt() + 1) {
+      // it's in order, now let's check we don't already have it
+      if (originsMap[mOrigin][mSeqNo].isNull()) {
+        // we don't have it; save it
+        saveMessage(mOrigin, mSeqNo, mText);
+        // propogate the rumor to neighbors
+        sendRumorMessage(mOrigin, mSeqNo, mText);
+      }
+    }
+    // always send a status message
+    sendStatusMessage(senderPort);
+    // Display the message in the chat dialog window. 
+    textview->append(messageText);
+}
+
 
 // Helper function to print the originsMap and corresponding the messagesMap.
 void ChatDialog::prettyPrintMaps() {
@@ -219,8 +246,6 @@ void ChatDialog::prettyPrintMaps() {
     }
   }
 }
-
-////////
 
 // Constructor for the NetSocket class.
 // Define a range of UDP ports.
@@ -271,6 +296,7 @@ QList<int> NetSocket::getAllNeighboringPorts() {
 qint64 NetSocket::writeDatagram(QByteArray *buf, int bufSize) {
   qint64 totalBytesSent = 0;
   QList<int> neighbors = this->getAllNeighboringPorts();
+  qDebug() << "Sending to these neighbors: " << neighbors;
   for (int p : neighbors) {
     totalBytesSent += writeDatagram(p, buf, bufSize);
   }
@@ -289,8 +315,6 @@ qint64 NetSocket::writeDatagram(quint16 senderPort, QByteArray *buf, int bufSize
   }
   return totalBytesSent;
 }
-
-////////
 
 int main(int argc, char **argv) {
   // Initialize Qt toolkit

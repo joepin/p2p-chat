@@ -48,6 +48,8 @@ class ChatDialog : public QDialog {
     void saveMessage(QString, qint32, QString);
     void sendRumorMessage(QString, qint32, QString);
     void sendStatusMessage(quint16);
+    void handleStatusMessage(QVariantMap, quint16);
+    void handleRumorMessage(QVariantMap, quint16);
 
   public slots:
     void gotReturnPressed();
@@ -60,7 +62,7 @@ class ChatDialog : public QDialog {
     QString myOrigin;
     qint32 mySeqNo;
     Origins originsMap;
-    QMap<QString, quint32> highestSeqNums;
+    QVariantMap highestSeqNums;
 };
 
 ////////
