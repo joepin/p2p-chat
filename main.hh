@@ -46,6 +46,7 @@ class ChatDialog : public QDialog {
     ChatDialog(NetSocket*);
     void saveMessage(QString, qint32, QString);
     void sendRumorMessage(QString, qint32, QString);
+    void sendStatusMessage();
 
   public slots:
     void gotReturnPressed();

@@ -122,6 +122,34 @@ void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text) {
   sock->writeDatagram(&buf, buf.size());
 }
 
+// Serialize and propogate a status message.
+void ChatDialog::sendStatusMessage() {
+
+  QByteArray buf;
+  QDataStream datastream(&buf, QIODevice::ReadWrite);
+  QMap<QString, QMap<QString, quint32>> message = QMap<QString, QMap<QString, quint32>>();
+  QMap<QString, quint32> wants = QMap<QString, quint32>();
+
+  for (auto origin : highestSeqNums.keys()) {
+    wants[origin] = highestSeqNums.value(origin) + 1;
+  }
+
+  // Serialize the message.
+  message["Want"] = wants;
+
+  // qDebug() << "";
+  // qDebug() << "Sending message to peers: "
+  //   << "<\"ChatText\",\"" << message["ChatText"].toString()
+  //   << "\"><\"Origin\",\"" << message["Origin"].toString()
+  //   << "\"><\"SeqNo\",\"" << message["SeqNo"].toString() << "\">";
+  // qDebug() << "";
+
+  datastream << message;
+
+  // Send message to the socket. 
+  sock->writeDatagram(&buf, buf.size());
+}
+
 // Callback when receiving a message from the socket. 
 void ChatDialog::gotMessage() {
   NetSocket *sock = this->sock;
