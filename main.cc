@@ -225,14 +225,14 @@ void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
       if (originsMap[mOrigin][mSeqNo].isNull()) {
         // we don't have it; save it
         saveMessage(mOrigin, mSeqNo, mText);
+        // display the message in the window
+        textview->append(messageText);
         // propogate the rumor to neighbors
         sendRumorMessage(mOrigin, mSeqNo, mText);
       }
     }
     // always send a status message
     sendStatusMessage(senderPort);
-    // Display the message in the chat dialog window. 
-    textview->append(messageText);
 }
 
 
