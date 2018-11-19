@@ -74,9 +74,11 @@ class ChatDialog : public QDialog {
   private:
     QTextEdit *textview;
     QLineEdit *textline;
+    
     QString myOrigin;
     qint32 mySeqNo;
     Origins originsMap;
+    
     QVariantMap highestSeqNums;
     QList<quint16> ports;
     QList<quint16> myNeighbors;

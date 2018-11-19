@@ -167,10 +167,9 @@ void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text, quin
   message["SeqNo"] = seq;
 
   qDebug() << "Sending \"rumor\" message to port:" << port
-    << "<\"ChatText\"," << message["ChatText"].toString()
-    << "\"><\"Origin\"," << message["Origin"].toString()
-    << "\"><\"SeqNo\"," << message["SeqNo"].toString() << ">";
-  qDebug() << "";
+    << ", <\"ChatText\"," << message["ChatText"].toString()
+    << "><\"Origin\"," << message["Origin"].toString()
+    << "><\"SeqNo\"," << message["SeqNo"].toString() << ">";
 
   datastream << message;
 
@@ -188,6 +187,8 @@ void ChatDialog::sendStatusMessage(quint16 senderPort) {
   for (auto o : highestSeqNums.keys()) {
     originsToSeq[o] = QVariant(highestSeqNums[o].toInt() + 1);
   }
+
+  qDebug() << "Sending \"status\" message to port:" << senderPort;
 
   message["Want"] = originsToSeq;
 
@@ -228,8 +229,6 @@ void ChatDialog::gotMessage() {
     }
       
     datagram.clear();
-    // @TODO:
-    // - Respond to the status message.
   }
 }
 
@@ -237,20 +236,22 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
   QMap<QString, QVariant> wantMap = m.value("Want").toMap();
   bool allAreEqual = true;
 
+  qDebug() << "Received \"status\" message from port:" << senderPort;
+
   for (auto wantOrigin : wantMap.keys()) {
     quint32 mSeqNo = wantMap.value(wantOrigin).toInt();
     quint32 highestForThisOrigin = highestSeqNums[wantOrigin].toInt();
     if (mSeqNo <= highestForThisOrigin) {
-      // they're behind
+      // They're behind.
       sendRumorMessage(wantOrigin, mSeqNo, originsMap[wantOrigin][mSeqNo], senderPort);
       allAreEqual = false;
       break;
       qDebug() << "they're behind";
     }  else if (mSeqNo == highestForThisOrigin + 1) {
-      // we're both equal
+      // We're both equal.
       qDebug() << "equal";
     } else {
-      // they're ahead of us, we need to send a status
+      // They're ahead of us - we need to send a status.
       sendStatusMessage(senderPort);
       allAreEqual = false;
       break;
@@ -258,11 +259,21 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
     }
   }
 
+  // If we reached this point, we're all up to date. 
   if (allAreEqual) {
-    // if we reached this point, we're both up to date
-    // we should flip a coin and if heads, start mongering with someone else
-    // else do nothing
-    // @TODO flip a coin
+    // Flip a coin.
+    int heads = qrand() % 2;
+
+    // If heads, pick a new random neighbor to start rumormongering with. 
+    if (heads) {
+      for (auto neighbor : myNeighbors) {
+        if (neighbor != senderPort) {
+          sendRumorMessage(myOrigin, mySeqNo, originsMap[myOrigin][mySeqNo], neighbor);
+          break;
+        }
+      }
+    }
+    // If tails, cease the rumormongering process.
   }
 }
 
@@ -273,11 +284,10 @@ void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
     qint32 mSeqNo = m["SeqNo"].toInt();
     QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
 
-  qDebug() << "Sending \"rumor\" message from port:" << senderPort
-    << "<\"ChatText\"," << m["ChatText"].toString()
-    << "\"><\"Origin\"," << m["Origin"].toString()
-    << "\"><\"SeqNo\"," << m["SeqNo"].toString() << ">";
-  qDebug() << "";
+    qDebug() << "Received \"rumor\" message from port:" << senderPort
+    << ", <\"ChatText\"," << m["ChatText"].toString()
+    << "><\"Origin\"," << m["Origin"].toString()
+    << "><\"SeqNo\"," << m["SeqNo"].toString() << ">";
 
     // Check that this sequence number is in the correct order.
     if (mSeqNo == highestSeqNums[mOrigin].toInt() + 1) {
