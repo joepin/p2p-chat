@@ -82,7 +82,7 @@ void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
     if (seq == highestSeqNums[origin].toInt() + 1) {
       // it is - we're good to save it
       originsMap[origin][seq] = text;
-      highestSeqNums[origin] = seq;
+      highestSeqNums[origin] = (quint32) seq;
     }
   } else {
     // We have not seen this origin before - create a new messages map.
@@ -91,7 +91,7 @@ void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
 
     // Add the messages map to the corresponding origin
     originsMap[origin] = messagesMap;
-    highestSeqNums[origin] = seq;
+    highestSeqNums[origin] = (quint32) seq;
   }
 }
 
@@ -175,18 +175,35 @@ void ChatDialog::gotMessage() {
 
 void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
   QMap<QString, QVariant> wantMap = m.value("Want").toMap();
-  for (auto mOrigin : wantMap.keys()) {
-    quint32 mSeqNo = wantMap.value(mOrigin).toInt();
-    if (highestSeqNums[mOrigin].toInt() == mSeqNo) {
-      // we have the same latest message as the status message, we can ignore
-      qDebug() << "equal";
-      continue;
-    }  else if (highestSeqNums[mOrigin].toInt() < mSeqNo) {
-      qDebug() << "less";
-      // we need the 
+  bool allAreEqual = true;
+
+  for (auto wantOrigin : wantMap.keys()) {
+    quint32 mSeqNo = wantMap.value(wantOrigin).toInt();
+    quint32 highestForThisOrigin = highestSeqNums[wantOrigin].toInt();
+    if (mSeqNo < highestForThisOrigin) {
+      // they're behind
+
+      sendRumorMessage(wantOrigin, mSeqNo, originsMap[wantOrigin][mSeqNo]);
+      allAreEqual = false;
+      break;
+      qDebug() << "they're behind";
+    }  else if (mSeqNo == highestForThisOrigin + 1) {
+      // we're both equal
+      qDebug() << "eqaul";
     } else {
-      qDebug() << "greater";
+      // they're ahead of us, we need to send a status
+      sendStatusMessage(senderPort);
+      allAreEqual = false;
+      break;
+      qDebug() << "we're behind";
     }
+  }
+
+  if (allAreEqual) {
+    // if we reached this point, we're both up to date
+    // we should flip a coin and if heads, start mongering with someone else
+    // else do nothing
+    // @TODO flip a coin
   }
 }
 
@@ -269,7 +286,7 @@ bool NetSocket::bind() {
 // - If there are no neighbors, pick two random ports.
 QList<int> NetSocket::getAllNeighboringPorts() {
   QList<int> list;
-  for (int i = myPortMin; i < myPortMax; i++) {
+  for (int i = myPortMin; i <= myPortMax; i++) {
     if (i != myPort) {
       list.append(i);
     }
