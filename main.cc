@@ -107,12 +107,12 @@ void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text) {
   message["Origin"] = origin;
   message["SeqNo"] = seq;
 
-  qDebug() << "";
-  qDebug() << "Sending message to peers: "
-    << "<\"ChatText\",\"" << message["ChatText"].toString()
-    << "\"><\"Origin\",\"" << message["Origin"].toString()
-    << "\"><\"SeqNo\",\"" << message["SeqNo"].toString() << "\">";
-  qDebug() << "";
+  // qDebug() << "";
+  // qDebug() << "Sending message to peers: "
+  //   << "<\"ChatText\",\"" << message["ChatText"].toString()
+  //   << "\"><\"Origin\",\"" << message["Origin"].toString()
+  //   << "\"><\"SeqNo\",\"" << message["SeqNo"].toString() << "\">";
+  // qDebug() << "";
 
   datastream << message;
 
@@ -213,12 +213,12 @@ void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
     qint32 mSeqNo = m["SeqNo"].toInt();
     QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
 
-    qDebug() << "";
-    qDebug() << "Received rumor: "
-      << "<\"ChatText\",\"" << mText
-      << "\"><\"Origin\",\"" << mOrigin
-      << "\"><\"SeqNo\",\"" << mSeqNo << "\">";
-    qDebug() << "";
+    // qDebug() << "";
+    // qDebug() << "Received rumor: "
+    //   << "<\"ChatText\",\"" << mText
+    //   << "\"><\"Origin\",\"" << mOrigin
+    //   << "\"><\"SeqNo\",\"" << mSeqNo << "\">";
+    // qDebug() << "";
 
     // check that this sequence number is in the correct order
     if (mSeqNo == highestSeqNums[mOrigin].toInt() + 1) {
