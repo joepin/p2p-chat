@@ -30,18 +30,25 @@ ChatDialog::ChatDialog(NetSocket *s) {
   layout->addWidget(textline);
   setLayout(layout);
 
+  // Set the socket.
   sock = s;
 
-  // Set unique identifier
+  // Set the unique identifier.
   qsrand((uint) QDateTime::currentMSecsSinceEpoch());
   myOrigin = QString::number(qrand());
-  qDebug() << "myOrigin is: " << myOrigin;
-  setWindowTitle("P2Papp - " + myOrigin);
+  setWindowTitle("P2Papp -" + myOrigin);
+  qDebug() << "myOrigin is:" << myOrigin;
 
-  // Set sequence number beginning at 1
+  // Set sequence number beginning at 1.
   mySeqNo = 1;
 
-  // initialize a map to save the highest sequence numbers seen so far
+  // Get available ports.
+  getPorts();
+
+  // Find up to 2 neighbors.
+  getNeighbors();
+
+  // Initialize a map to save the highest sequence numbers seen so far.
   highestSeqNums = QVariantMap();
 
   // Register a callback on the textline's returnPressed signal
@@ -50,8 +57,62 @@ ChatDialog::ChatDialog(NetSocket *s) {
   connect(s, SIGNAL(readyRead()), this, SLOT(gotMessage()));
 }
 
+// Find the 2 closest (quickest responding) neighbors.
+// If 2 neighbors cannot be found, randomly select 2 ports.
+void ChatDialog::getNeighbors() {
+  // Send a "status" message to all available ports.
+  for (auto port : ports) {
+    qDebug() << "Sending a connection message to:" << port;
+    sendStatusMessage(port);
+  }
+
+  // Set timer.
+  QTimer::singleShot(TIMEOUT, this, SLOT(timeNeighbors()));
+}
+
+// Add neighbors to the stored list.
+void ChatDialog::addNeighbors(quint16 port) {
+  if (myNeighbors.size() < 2) {
+    // Redundancy check if timeout has occurred.
+    if (timing) {
+      qDebug() << "Received connection response from port:" << port;
+      myNeighbors.append(port);
+    }
+  }
+}
+
+// Timeout handler for finding neighbors.
+void ChatDialog::timeNeighbors() {
+  timing = false;
+
+  qDebug() << "Port finding has timed out.";
+
+  // If ports have not been chosen, randomly select two ports.
+  if (myNeighbors.size() < 2) {
+    qsrand(qrand());
+    if (myNeighbors.size() == 1) {
+      // Add 1 random port.
+      QList<quint16> tempPorts = ports;
+      tempPorts.removeOne(myNeighbors.at(0));
+      int rand = qrand() % tempPorts.size();
+      myNeighbors.append(tempPorts.at(rand));
+    } else {
+      // Select 2 random ports.
+      int rand = qrand() % ports.size();
+      myNeighbors = ports;
+      myNeighbors.removeAt(rand);
+    }
+  }
+  qDebug() << "Neighbor ports chosen:" << myNeighbors[0] << "," << myNeighbors[1];
+}
+
+// Get list of available ports. 
+void ChatDialog::getPorts() {
+  ports = sock->getPorts();
+}
+
 // Callback when user presses "Enter" in the textline widget.
-// Propogates rumor messages. 
+// Propogates "rumor" messages. 
 void ChatDialog::gotReturnPressed() {
   QString message = textline->text();
 
@@ -61,8 +122,10 @@ void ChatDialog::gotReturnPressed() {
   // Save the message.
   saveMessage(myOrigin, mySeqNo, message);
 
-  // Send the rumor.
-  sendRumorMessage(myOrigin, mySeqNo, message);
+  // Send the "rumor" to a random neighbor.
+  qsrand(qrand());
+  int rand = qrand() % myNeighbors.size();
+  sendRumorMessage(myOrigin, mySeqNo, message, myNeighbors.at(rand));
 
   // Update the sequence number.
   mySeqNo++;
@@ -93,7 +156,7 @@ void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
 }
 
 // Serialize and propogate a rumor message.
-void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text) {
+void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text, quint16 port) {
   QByteArray buf;
   QDataStream datastream(&buf, QIODevice::ReadWrite);
   QVariantMap message;
@@ -103,18 +166,16 @@ void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text) {
   message["Origin"] = origin;
   message["SeqNo"] = seq;
 
-  qDebug() << "";
-  qDebug() << "Sending message to peers: "
-    << "<\"ChatText\",\"" << message["ChatText"].toString()
-    << "\"><\"Origin\",\"" << message["Origin"].toString()
-    << "\"><\"SeqNo\",\"" << message["SeqNo"].toString() << "\">";
+  qDebug() << "Sending \"rumor\" message to port:" << port
+    << "<\"ChatText\"," << message["ChatText"].toString()
+    << "\"><\"Origin\"," << message["Origin"].toString()
+    << "\"><\"SeqNo\"," << message["SeqNo"].toString() << ">";
   qDebug() << "";
 
   datastream << message;
 
-  // Send message to the socket. 
-  // @TODO - Add port
-  sock->writeDatagram(&buf, buf.size(), 1);
+  // Send message to the socket.
+  sock->writeDatagram(&buf, buf.size(), port);
 }
 
 // Serialize and propogate a status message.
@@ -154,15 +215,16 @@ void ChatDialog::gotMessage() {
 
     stream >> message;
 
-    // Check if we have a status message
+    // Check if we have a status message.
     if (!message["Want"].isNull()) {
-      // we have a status message
+      // We have a "status" message.
       handleStatusMessage(message, senderPort);
     } else if (!message["ChatText"].isNull()) {
-      // we have a rumor message
+      // We have a "rumor" message.
       handleRumorMessage(message, senderPort);
     } else {
-      // corrupt or other message
+      // We have a corrupt or undefined message.
+      qDebug() << "Received corrupt or undefined message from " << senderPort;
     }
       
     datagram.clear();
@@ -180,13 +242,13 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
     quint32 highestForThisOrigin = highestSeqNums[wantOrigin].toInt();
     if (mSeqNo <= highestForThisOrigin) {
       // they're behind
-      sendRumorMessage(wantOrigin, mSeqNo, originsMap[wantOrigin][mSeqNo]);
+      sendRumorMessage(wantOrigin, mSeqNo, originsMap[wantOrigin][mSeqNo], senderPort);
       allAreEqual = false;
       break;
       qDebug() << "they're behind";
     }  else if (mSeqNo == highestForThisOrigin + 1) {
       // we're both equal
-      qDebug() << "eqaul";
+      qDebug() << "equal";
     } else {
       // they're ahead of us, we need to send a status
       sendStatusMessage(senderPort);
@@ -205,32 +267,31 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
 }
 
 void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
-  // serialize the rumor message
+    // Serialize the rumor message.
     QString mText = m["ChatText"].toString();
     QString mOrigin = m["Origin"].toString();
     qint32 mSeqNo = m["SeqNo"].toInt();
     QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
 
-    qDebug() << "";
-    qDebug() << "Received rumor: "
-      << "<\"ChatText\",\"" << mText
-      << "\"><\"Origin\",\"" << mOrigin
-      << "\"><\"SeqNo\",\"" << mSeqNo << "\">";
-    qDebug() << "";
+  qDebug() << "Sending \"rumor\" message from port:" << senderPort
+    << "<\"ChatText\"," << m["ChatText"].toString()
+    << "\"><\"Origin\"," << m["Origin"].toString()
+    << "\"><\"SeqNo\"," << m["SeqNo"].toString() << ">";
+  qDebug() << "";
 
-    // check that this sequence number is in the correct order
+    // Check that this sequence number is in the correct order.
     if (mSeqNo == highestSeqNums[mOrigin].toInt() + 1) {
-      // it's in order, now let's check we don't already have it
+      // It's in order, now let's check we don't already have it.
       if (originsMap[mOrigin][mSeqNo].isNull()) {
-        // we don't have it; save it
+        // wW don't have it; save it.
         saveMessage(mOrigin, mSeqNo, mText);
-        // display the message in the window
+        // Display the message in the window.
         textview->append(messageText);
-        // propogate the rumor to neighbors
-        sendRumorMessage(mOrigin, mSeqNo, mText);
+        // Propogate the rumor to neighbors.
+        sendRumorMessage(mOrigin, mSeqNo, mText, senderPort);
       }
     }
-    // always send a status message
+    // Always send a status message.
     sendStatusMessage(senderPort);
 }
 
@@ -259,7 +320,7 @@ NetSocket::NetSocket() {
   // We use the range from 32768 to 49151 for this purpose.
   myPortMin = 32768 + (getuid() % 4096)*4;
   myPortMax = myPortMin + 3;
-  qDebug() << "Range of ports: " << myPortMin << " - " << myPortMax;
+  qDebug() << "Range of ports:" << myPortMin << "-" << myPortMax;
 }
 
 // Bind the Netsocket to a port in a range of ports defined above.
@@ -267,7 +328,7 @@ bool NetSocket::bind() {
   // Try to bind to each of the range myPortMin... myPortMax in turn.
   for (quint16 port = myPortMin; port <= myPortMax; port++) {
     if (QUdpSocket::bind(port)) {
-      qDebug() << "Bound to UDP port: " << port;
+      qDebug() << "Bound to UDP port:" << port;
       myPort = port;
       return true;
     }
@@ -283,7 +344,7 @@ qint64 NetSocket::writeDatagram(QByteArray *buf, int bufSize, quint16 port) {
   qint64 bytesSent = 0;
   bytesSent = QUdpSocket::writeDatagram(*buf, QHostAddress::LocalHost, port);
   if (bytesSent < 0 || bytesSent != bufSize) {
-    qDebug() << "Error sending full datagram to " << QHostAddress::LocalHost << ":" << port << ".";
+    qDebug() << "Error sending full datagram to" << QHostAddress::LocalHost << ":" << port << ".";
   }
   return bytesSent;
 }

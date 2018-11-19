@@ -46,23 +46,30 @@ class ChatDialog : public QDialog {
 
   // Mapping of sequence numbers to messages.
   typedef QMap<qint32, QString> Messages;
+
   // Mapping of origins to a map of sequence numbers and messages.
   typedef QMap<QString, Messages> Origins;
 
   public:
     NetSocket *sock;
     QVariantMap allMessages;
+    
     ChatDialog(NetSocket*);
+    
     void saveMessage(QString, qint32, QString);
-    void sendRumorMessage(QString, qint32, QString);
+    
+    void sendRumorMessage(QString, qint32, QString, quint16);
     void sendStatusMessage(quint16);
+    
     void handleStatusMessage(QVariantMap, quint16);
     void handleRumorMessage(QVariantMap, quint16);
+    
+    void prettyPrintMaps();
 
   public slots:
     void gotReturnPressed();
     void gotMessage();
-    void prettyPrintMaps();
+    void timeNeighbors();
 
   private:
     QTextEdit *textview;
@@ -71,6 +78,13 @@ class ChatDialog : public QDialog {
     qint32 mySeqNo;
     Origins originsMap;
     QVariantMap highestSeqNums;
+    QList<quint16> ports;
+    QList<quint16> myNeighbors;
+    bool timing;
+
+    void getPorts();
+    void addNeighbors(quint16 port);
+    void getNeighbors();
 };
 
 ////////
