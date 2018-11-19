@@ -22,6 +22,7 @@ class NetSocket : public QUdpSocket {
     bool bind();
     // Send data.
     qint64 writeDatagram(QByteArray*, int);
+    qint64 writeDatagram(quint16, QByteArray*, int);
     QList<int> getAllNeighboringPorts();
 
   private:
@@ -46,7 +47,7 @@ class ChatDialog : public QDialog {
     ChatDialog(NetSocket*);
     void saveMessage(QString, qint32, QString);
     void sendRumorMessage(QString, qint32, QString);
-    void sendStatusMessage();
+    void sendStatusMessage(quint16);
 
   public slots:
     void gotReturnPressed();

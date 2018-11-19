@@ -78,7 +78,7 @@ void ChatDialog::gotReturnPressed() {
 // Save input sent the chat window. 
 void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
   // Check if we store this origin already.
-  qDebug() << "highest seq num for origin " + origin + ": " + highestSeqNums[origin];
+  qDebug() << "highest seq num for origin " + origin + ": " + QString::number(highestSeqNums[origin]);
   if (originsMap.count(origin) > 0) {
     // Add entry to the messages mapping.
     originsMap[origin][seq] = text;
@@ -94,7 +94,7 @@ void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
     highestSeqNums[origin] = seq;
     // prettyPrintMaps();
   }
-  qDebug() << "highest seq num for origin " + origin + ": " + highestSeqNums[origin];
+  qDebug() << "highest seq num for origin " + origin + ": " + QString::number(highestSeqNums[origin]);
 }
 
 // Serialize and propogate a rumor message.
@@ -123,7 +123,7 @@ void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text) {
 }
 
 // Serialize and propogate a status message.
-void ChatDialog::sendStatusMessage() {
+void ChatDialog::sendStatusMessage(quint16 senderPort) {
 
   QByteArray buf;
   QDataStream datastream(&buf, QIODevice::ReadWrite);
@@ -134,20 +134,12 @@ void ChatDialog::sendStatusMessage() {
     wants[origin] = highestSeqNums.value(origin) + 1;
   }
 
-  // Serialize the message.
   message["Want"] = wants;
-
-  // qDebug() << "";
-  // qDebug() << "Sending message to peers: "
-  //   << "<\"ChatText\",\"" << message["ChatText"].toString()
-  //   << "\"><\"Origin\",\"" << message["Origin"].toString()
-  //   << "\"><\"SeqNo\",\"" << message["SeqNo"].toString() << "\">";
-  // qDebug() << "";
 
   datastream << message;
 
   // Send message to the socket. 
-  sock->writeDatagram(&buf, buf.size());
+  sock->writeDatagram(senderPort, &buf, buf.size());
 }
 
 // Callback when receiving a message from the socket. 
@@ -203,6 +195,9 @@ void ChatDialog::gotMessage() {
 
       // Send the rumor to neighbors.
       sendRumorMessage(mOrigin, mSeqNo, mText);
+
+      // Send out a status message to the sender 
+      sendStatusMessage(senderPort);
 
       // Display the message in the chat dialog window. 
       textview->append(messageText);
@@ -274,16 +269,23 @@ QList<int> NetSocket::getAllNeighboringPorts() {
 
 // Propogate messages to all neighbors.
 qint64 NetSocket::writeDatagram(QByteArray *buf, int bufSize) {
-  qint64 bytesSent = 0;
   qint64 totalBytesSent = 0;
   QList<int> neighbors = this->getAllNeighboringPorts();
   for (int p : neighbors) {
-    bytesSent = QUdpSocket::writeDatagram(*buf, QHostAddress::LocalHost, p);
-    if (bytesSent < 0 || bytesSent != bufSize) {
-      qDebug() << "Error sending full datagram to " << QHostAddress::LocalHost << ":" << p << ".";
-    } else { 
-      totalBytesSent += bytesSent;
-    }
+    totalBytesSent += writeDatagram(p, buf, bufSize);
+  }
+  return totalBytesSent;
+}
+
+// Send messages to one specific neighbor, by port number.
+qint64 NetSocket::writeDatagram(quint16 senderPort, QByteArray *buf, int bufSize) {
+  qint64 bytesSent = 0;
+  qint64 totalBytesSent = 0;
+  bytesSent = QUdpSocket::writeDatagram(*buf, QHostAddress::LocalHost, senderPort);
+  if (bytesSent < 0 || bytesSent != bufSize) {
+    qDebug() << "Error sending full datagram to " << QHostAddress::LocalHost << ":" << senderPort << ".";
+  } else { 
+    totalBytesSent += bytesSent;
   }
   return totalBytesSent;
 }
