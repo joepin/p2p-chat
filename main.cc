@@ -128,7 +128,7 @@ void ChatDialog::sendStatusMessage(quint16 senderPort) {
   QVariantMap originsToSeq = QVariantMap();
 
   for (auto o : highestSeqNums.keys()) {
-    originsToSeq[o] = highestSeqNums[o];
+    originsToSeq[o] = QVariant(highestSeqNums[o].toInt() + 1);
   }
 
   message["Want"] = originsToSeq;
@@ -180,9 +180,8 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
   for (auto wantOrigin : wantMap.keys()) {
     quint32 mSeqNo = wantMap.value(wantOrigin).toInt();
     quint32 highestForThisOrigin = highestSeqNums[wantOrigin].toInt();
-    if (mSeqNo < highestForThisOrigin) {
+    if (mSeqNo <= highestForThisOrigin) {
       // they're behind
-
       sendRumorMessage(wantOrigin, mSeqNo, originsMap[wantOrigin][mSeqNo]);
       allAreEqual = false;
       break;
