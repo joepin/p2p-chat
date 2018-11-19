@@ -17,18 +17,26 @@ class NetSocket : public QUdpSocket {
   Q_OBJECT
 
   public:
+    // Initialize the net socket.
     NetSocket();
+
     // Bind this socket to a P2Papp-specific default port.
     bool bind();
-    // Send data.
-    qint64 writeDatagram(QByteArray*, int);
-    qint64 writeDatagram(quint16, QByteArray*, int);
-    QList<int> getAllNeighboringPorts();
+
+    // Send a datagram to neighbors.
+    qint64 writeDatagram(QByteArray*, int, quint16);
+
+    // Find ports.
+    void findPorts();
+
+    // Getter for ports.
+    QList<quint16> getPorts();
 
   private:
-    int myPortMin;
-    int myPortMax;
-    int myPort;
+    quint16 myPortMin;
+    quint16 myPortMax;
+    quint16 myPort;
+    QList<quint16> ports;
 };
 
 ////////

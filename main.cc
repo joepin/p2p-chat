@@ -20,9 +20,6 @@ ChatDialog::ChatDialog(NetSocket *s) {
   // Small text-entry box the user can enter messages.
   // This widget normally expands only horizontally,
   // leaving extra vertical space for the textview widget.
-  //
-  // You might change this into a read/write QTextEdit,
-  // so that the user can easily enter multi-line messages.
   textline = new QLineEdit(this);
 
   // Lay out the widgets to appear in the main window.
@@ -38,7 +35,7 @@ ChatDialog::ChatDialog(NetSocket *s) {
   // Set unique identifier
   qsrand((uint) QDateTime::currentMSecsSinceEpoch());
   myOrigin = QString::number(qrand());
-  qDebug() << "myOrigin is " << myOrigin;
+  qDebug() << "myOrigin is: " << myOrigin;
   setWindowTitle("P2Papp - " + myOrigin);
 
   // Set sequence number beginning at 1
@@ -76,11 +73,11 @@ void ChatDialog::gotReturnPressed() {
 
 // Save input sent the chat window. 
 void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
-  // check if we have this origin already
+  // Check if we have this origin already.
   if (!originsMap[origin].isEmpty()) {
-    // check if the sequence number is the next sequentially
+    // Check if the sequence number is the next sequentially.
     if (seq == highestSeqNums[origin].toInt() + 1) {
-      // it is - we're good to save it
+      // It is - we're good to save it.
       originsMap[origin][seq] = text;
       highestSeqNums[origin] = (quint32) seq;
     }
@@ -97,7 +94,6 @@ void ChatDialog::saveMessage(QString origin, qint32 seq, QString text) {
 
 // Serialize and propogate a rumor message.
 void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text) {
-
   QByteArray buf;
   QDataStream datastream(&buf, QIODevice::ReadWrite);
   QVariantMap message;
@@ -117,7 +113,8 @@ void ChatDialog::sendRumorMessage(QString origin, qint32 seq, QString text) {
   datastream << message;
 
   // Send message to the socket. 
-  sock->writeDatagram(&buf, buf.size());
+  // @TODO - Add port
+  sock->writeDatagram(&buf, buf.size(), 1);
 }
 
 // Serialize and propogate a status message.
@@ -134,8 +131,9 @@ void ChatDialog::sendStatusMessage(quint16 senderPort) {
   message["Want"] = originsToSeq;
 
   datastream << message;
+  
   // Send message to the socket. 
-  sock->writeDatagram(senderPort, &datagram, datagram.size());
+  sock->writeDatagram(&datagram, datagram.size(), senderPort);
 }
 
 // Callback when receiving a message from the socket. 
@@ -236,7 +234,6 @@ void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
     sendStatusMessage(senderPort);
 }
 
-
 // Helper function to print the originsMap and corresponding the messagesMap.
 void ChatDialog::prettyPrintMaps() {
   for (auto origin : originsMap.keys()) {
@@ -247,6 +244,8 @@ void ChatDialog::prettyPrintMaps() {
     }
   }
 }
+
+////////
 
 // Constructor for the NetSocket class.
 // Define a range of UDP ports.
@@ -260,16 +259,16 @@ NetSocket::NetSocket() {
   // We use the range from 32768 to 49151 for this purpose.
   myPortMin = 32768 + (getuid() % 4096)*4;
   myPortMax = myPortMin + 3;
-  qDebug() << myPortMin << " - " << myPortMax;
+  qDebug() << "Range of ports: " << myPortMin << " - " << myPortMax;
 }
 
 // Bind the Netsocket to a port in a range of ports defined above.
 bool NetSocket::bind() {
-  // Try to bind to each of the range myPortMin..myPortMax in turn.
-  for (int p = myPortMin; p <= myPortMax; p++) {
-    if (QUdpSocket::bind(p)) {
-      qDebug() << "bound to UDP port " << p;
-      myPort = p;
+  // Try to bind to each of the range myPortMin... myPortMax in turn.
+  for (quint16 port = myPortMin; port <= myPortMax; port++) {
+    if (QUdpSocket::bind(port)) {
+      qDebug() << "Bound to UDP port: " << port;
+      myPort = port;
       return true;
     }
   }
@@ -279,58 +278,49 @@ bool NetSocket::bind() {
   return false;
 }
 
-// Find the 2 closest (quickest responding) neighbors.
-// @TODO:
-// - Add timeouts to determine which neighbors are the fastest.
-// - If there are no neighbors, pick two random ports.
-QList<int> NetSocket::getAllNeighboringPorts() {
-  QList<int> list;
-  for (int i = myPortMin; i <= myPortMax; i++) {
-    if (i != myPort) {
-      list.append(i);
+// Send a message to a socket.
+qint64 NetSocket::writeDatagram(QByteArray *buf, int bufSize, quint16 port) {
+  qint64 bytesSent = 0;
+  bytesSent = QUdpSocket::writeDatagram(*buf, QHostAddress::LocalHost, port);
+  if (bytesSent < 0 || bytesSent != bufSize) {
+    qDebug() << "Error sending full datagram to " << QHostAddress::LocalHost << ":" << port << ".";
+  }
+  return bytesSent;
+}
+
+// Return a list of ports.
+QList<quint16> NetSocket::getPorts() {
+  return ports;
+}
+
+// Find neighboring ports.
+void NetSocket::findPorts() {
+  for (quint16 port = myPortMin; port <= myPortMax; port++) {
+    if (port != myPort) {
+      // Get a list of ports.
+      ports.append(port);
     }
   }
-  return list;
 }
 
-// Propogate messages to all neighbors.
-qint64 NetSocket::writeDatagram(QByteArray *buf, int bufSize) {
-  qint64 totalBytesSent = 0;
-  QList<int> neighbors = this->getAllNeighboringPorts();
-  for (int p : neighbors) {
-    totalBytesSent += writeDatagram(p, buf, bufSize);
-  }
-  return totalBytesSent;
-}
-
-// Send messages to one specific neighbor, by port number.
-qint64 NetSocket::writeDatagram(quint16 senderPort, QByteArray *buf, int bufSize) {
-  qint64 bytesSent = 0;
-  qint64 totalBytesSent = 0;
-  bytesSent = QUdpSocket::writeDatagram(*buf, QHostAddress::LocalHost, senderPort);
-  if (bytesSent < 0 || bytesSent != bufSize) {
-    qDebug() << "Error sending full datagram to " << QHostAddress::LocalHost << ":" << senderPort << ".";
-  } else { 
-    totalBytesSent += bytesSent;
-  }
-  return totalBytesSent;
-}
+////////
 
 int main(int argc, char **argv) {
-  // Initialize Qt toolkit
+  // Initialize Qt toolkit.
   QApplication app(argc,argv);
 
-  // Create a UDP network socket
-  // NetSocket sock;
+  // Create a UDP network socket, bind, and get list of ports.
   NetSocket *sock = new NetSocket();
   if (!sock->bind())
     exit(1);
+  sock->findPorts();
 
-  // Create an initial chat dialog window
-  // ChatDialog dialog;
+  // Create an initial chat dialog window.
   ChatDialog *dialog = new ChatDialog(sock);
   dialog->show();
 
-  // Enter the Qt main loop; everything else is event driven
+  // Enter the Qt main loop; everything else is event driven.
   return app.exec();
 }
+
+////////
