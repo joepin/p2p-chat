@@ -70,6 +70,7 @@ class ChatDialog : public QDialog {
     void gotReturnPressed();
     void gotMessage();
     void timeNeighbors();
+    void antiEntropy();
 
   private:
     QTextEdit *textview;

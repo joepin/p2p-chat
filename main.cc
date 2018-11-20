@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QDateTime>
 #include <QPair>
+#include <QTimer>
 #include "main.hh"
 
 ////////
@@ -55,6 +56,10 @@ ChatDialog::ChatDialog(NetSocket *s) {
   // so that we can send the message entered by the user.
   connect(textline, SIGNAL(returnPressed()), this, SLOT(gotReturnPressed()));
   connect(s, SIGNAL(readyRead()), this, SLOT(gotMessage()));
+
+  QTimer *antiEntropyTimer = new QTimer();
+  connect(antiEntropyTimer, SIGNAL(timeout()), this, SLOT(antiEntropy()));
+  antiEntropyTimer->start(10000);
 }
 
 // Find the 2 closest (quickest responding) neighbors.
@@ -342,6 +347,13 @@ void ChatDialog::prettyPrintMaps() {
       qDebug() << message << ", " << messages.value(message);
     }
   }
+}
+
+void ChatDialog::antiEntropy() {
+  int randomIndex = qrand() % ports.size();
+  int targetPort = ports.at(randomIndex);
+  qDebug() << "antiEntropy: starting to rumor with port " << targetPort;
+  sendStatusMessage(targetPort);
 }
 
 ////////
