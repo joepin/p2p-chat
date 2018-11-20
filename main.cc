@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QPair>
 #include <QTimer>
+#include <QColor>
 #include "main.hh"
 
 ////////
@@ -122,7 +123,8 @@ void ChatDialog::gotReturnPressed() {
   QString message = textline->text();
 
   // Add the message to the chat window. 
-  textview->append(message);
+  QString messageText = "<span style=\"color:'red';\"><b>" + myOrigin + "</b></span>: " + message;
+  textview->append(messageText);
 
   // Save the message.
   saveMessage(myOrigin, mySeqNo, message);
@@ -315,7 +317,8 @@ void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
     QString mText = m["ChatText"].toString();
     QString mOrigin = m["Origin"].toString();
     qint32 mSeqNo = m["SeqNo"].toInt();
-    QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
+    QString messageText = "<span style=\"color:'blue';\"><b>" + mOrigin + "</b></span>: " + mText;
+    // QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
 
     qDebug() << "Received \"rumor\" message from port:" << senderPort
     << ", <\"ChatText\"," << m["ChatText"].toString()
