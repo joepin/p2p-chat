@@ -36,7 +36,7 @@ ChatDialog::ChatDialog(NetSocket *s) {
   // Set the unique identifier.
   qsrand((uint) QDateTime::currentMSecsSinceEpoch());
   myOrigin = QString::number(qrand());
-  setWindowTitle("P2Papp -" + myOrigin);
+  setWindowTitle("P2Papp - " + myOrigin);
   qDebug() << "myOrigin is:" << myOrigin;
 
   // Set sequence number beginning at 1.
@@ -123,7 +123,7 @@ void ChatDialog::gotReturnPressed() {
   saveMessage(myOrigin, mySeqNo, message);
 
   // Send the "rumor" to a random neighbor.
-  qsrand(qrand());
+  // qsrand(qrand());
   int rand = qrand() % myNeighbors.size();
   sendRumorMessage(myOrigin, mySeqNo, message, myNeighbors.at(rand));
 
@@ -233,12 +233,17 @@ void ChatDialog::gotMessage() {
 }
 
 void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
-  QMap<QString, QVariant> wantMap = m.value("Want").toMap();
+  // throughout this method, we refer to the originator of the status message as the remote
+  QVariantMap wantMap = m.value("Want").toMap();
   bool allAreEqual = true;
+
+  // map to hold a list of origins the remote knows about, that way we can check against our list
+  QVariantMap originsKnownToRemote = QVariantMap();
 
   qDebug() << "Received \"status\" message from port:" << senderPort;
 
   for (auto wantOrigin : wantMap.keys()) {
+    originsKnownToRemote[wantOrigin] = true;
     quint32 mSeqNo = wantMap.value(wantOrigin).toInt();
     quint32 highestForThisOrigin = highestSeqNums[wantOrigin].toInt();
     if (mSeqNo <= highestForThisOrigin) {
@@ -247,7 +252,7 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
       allAreEqual = false;
       break;
       qDebug() << "they're behind";
-    }  else if (mSeqNo == highestForThisOrigin + 1) {
+    } else if (mSeqNo == highestForThisOrigin + 1) {
       // We're both equal.
       qDebug() << "equal";
     } else {
@@ -256,6 +261,28 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
       allAreEqual = false;
       break;
       qDebug() << "we're behind";
+    }
+  }
+
+  // if the number of origins the remote knows about is less than ours, we need to send them
+  // the first message from each origin we know about that they don't
+  if (originsKnownToRemote.count() < originsMap.count()) {
+    for (auto ourOrigin : originsMap.keys()) {
+      if (originsKnownToRemote[ourOrigin].isNull()) {
+        sendRumorMessage(ourOrigin, 1, originsMap[ourOrigin][1], senderPort);
+      }
+    }
+  }
+
+  // if the remote has more origins that we do, we need to request those in our status message
+  if (originsKnownToRemote.count() > originsMap.count()) {
+    for (auto theirOrigin : originsKnownToRemote.keys()) {
+      if (originsMap.contains(theirOrigin) == false) {
+        // we don't know about this origin
+        // init this origin to the highest seq #s with a value of 0, effectively asking for the 1st message
+        highestSeqNums[theirOrigin] = 0;
+        sendStatusMessage(senderPort);
+      }
     }
   }
 
@@ -268,7 +295,8 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
     if (heads) {
       for (auto neighbor : myNeighbors) {
         if (neighbor != senderPort) {
-          sendRumorMessage(myOrigin, mySeqNo, originsMap[myOrigin][mySeqNo], neighbor);
+          // sendRumorMessage(myOrigin, mySeqNo, originsMap[myOrigin][mySeqNo], neighbor);
+          sendStatusMessage(neighbor);
           break;
         }
       }
