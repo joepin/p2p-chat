@@ -70,7 +70,6 @@ class ChatDialog : public QDialog {
   public slots:
     void gotReturnPressed();
     void gotMessage();
-    void timeNeighbors();
     void timeRumor();
     void antiEntropy();
 
