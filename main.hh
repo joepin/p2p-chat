@@ -7,9 +7,12 @@
 #include <QLineEdit>
 #include <QHostInfo>
 #include <QUdpSocket>
+#include <QElapsedTimer>
 
 #define TIMEOUT 1
 #define ANTI_ENTROPY_TIME 10
+#define NUM_PEERS 4
+#define NUM_NEIGHBORS 2
 
 ////////
 
@@ -27,7 +30,7 @@ class NetSocket : public QUdpSocket {
     qint64 writeDatagram(QByteArray*, int, quint16);
 
     // Find ports.
-    void findPorts();
+    QList<quint16> findPorts();
 
     // Getter for ports.
     QList<quint16> getPorts();
@@ -66,11 +69,14 @@ class ChatDialog : public QDialog {
     
     void prettyPrintMaps();
 
+    void sendStatusProbe(quint16);
+
   public slots:
     void gotReturnPressed();
     void gotMessage();
-    void timeNeighbors();
+    void timeNeighbors(quint16);
     void antiEntropy();
+    void gotStatusProbeMessage();
 
   private:
     QTextEdit *textview;
@@ -81,14 +87,20 @@ class ChatDialog : public QDialog {
     Origins originsMap;
     
     QVariantMap highestSeqNums;
-    QList<quint16> ports;
     QList<quint16> myNeighbors;
     bool timing;
 
-    void getPorts();
-    void addNeighbors(quint16 port);
-    void getNeighbors();
+    QList<quint16> ports;
+    QMap<quint16, QElapsedTimer*> rttTimers;
+    QVector<QPair<quint16, qint64>> rttResults;
+    quint16 rttCounter;
+
+    QList<quint16> getPorts();
+    void determineNearestNeighbors();
 };
+
+bool compareRTTResults(const QPair<quint16, qint64> &a,
+  const QPair<quint16, qint64> &b);
 
 ////////
 

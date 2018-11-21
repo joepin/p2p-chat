@@ -7,6 +7,7 @@
 #include <QPair>
 #include <QTimer>
 #include <QColor>
+#include <algorithm>
 #include "main.hh"
 
 ////////
@@ -44,18 +45,37 @@ ChatDialog::ChatDialog(NetSocket *s) {
   // Set sequence number beginning at 1.
   mySeqNo = 1;
 
-  // Get available ports.
-  getPorts();
-
-  // Find up to 2 neighbors.
-  getNeighbors();
-
   // Initialize a map to save the highest sequence numbers seen so far.
   highestSeqNums = QVariantMap();
 
   // Register a callback on the textline's returnPressed signal
   // so that we can send the message entered by the user.
   connect(textline, SIGNAL(returnPressed()), this, SLOT(gotReturnPressed()));
+
+  // register a temporary callback on socket's ready signal to get status probes
+  connect(s, SIGNAL(readyRead()), this, SLOT(gotStatusProbeMessage()));
+
+  // init variables for getting close neigbors
+  rttTimers = QMap<quint16, QElapsedTimer*>();
+  rttResults = QVector<QPair<quint16, qint64>>();
+  rttCounter = 0;
+  ports = getPorts();
+  // begin the process of finding neighbors
+  determineNearestNeighbors();
+  // loop until we have all the nodes timed out
+  while (rttCounter < ports.count()) {
+    // block until the timeouts fire
+  }
+
+  std::sort(rttResults.begin(), rttResults.end(), compareRTTResults);
+
+  for (int i = 0; i < NUM_NEIGHBORS; i++) {
+    myNeighbors.append(rttResults[i].first);
+  }
+
+  // disconnect temporary readyRead callback
+  disconnect(s, SIGNAL(readyRead()), 0, 0);
+  // register callback on sockets' readyRead signal to read a packet
   connect(s, SIGNAL(readyRead()), this, SLOT(gotMessage()));
 
   QTimer *antiEntropyTimer = new QTimer();
@@ -65,18 +85,36 @@ ChatDialog::ChatDialog(NetSocket *s) {
 
 // Find the 2 closest (quickest responding) neighbors.
 // If 2 neighbors cannot be found, randomly select 2 ports.
-void ChatDialog::getNeighbors() {
+void ChatDialog::determineNearestNeighbors() {
   // Send a "status" message to all available ports.
   for (auto port : ports) {
-    qDebug() << "Sending a connection message to:" << port;
-    sendStatusMessage(port);
+    qDebug() << "Sending a status probe to:" << port;
+    QElapsedTimer *rttTimer = new QElapsedTimer();
+    QTimer *timer = new QTimer();
+    connect(timer, SIGNAL(timeout()), this, SLOT(timeNeighbors()));
+    rttTimers[port] = rttTimer;
+    rttTimer->start();
+    sendStatusProbe(port);
   }
 
   // Set timer.
-  QTimer::singleShot(TIMEOUT, this, SLOT(timeNeighbors()));
 }
 
-// Add neighbors to the stored list.
+// Timeout handler for finding neighbors.
+void ChatDialog::timeNeighbors(quint16 port) {
+  qDebug() << "Port finding has timed out.";
+  qint64 elapsedTime = rttTimers[port]->elapsed();
+  rttResults.append(QPair<quint16, qint64>(port, elapsedTime));
+  rttCounter++;
+}
+
+// comparator function to sort pairs by second key in ascending order
+bool compareRTTResults(const QPair<quint16, qint64> &a,
+  const QPair<quint16, qint64> &b) {
+    return (a.second < b.second); 
+} 
+
+/*// Add neighbors to the stored list.
 void ChatDialog::addNeighbors(quint16 port) {
   if (myNeighbors.size() < 2) {
     // Redundancy check if timeout has occurred.
@@ -85,13 +123,6 @@ void ChatDialog::addNeighbors(quint16 port) {
       myNeighbors.append(port);
     }
   }
-}
-
-// Timeout handler for finding neighbors.
-void ChatDialog::timeNeighbors() {
-  timing = false;
-
-  qDebug() << "Port finding has timed out.";
 
   // If ports have not been chosen, randomly select two ports.
   if (myNeighbors.size() < 2) {
@@ -110,11 +141,66 @@ void ChatDialog::timeNeighbors() {
     }
   }
   qDebug() << "Neighbor ports chosen:" << myNeighbors[0] << "," << myNeighbors[1];
+}*/
+
+void ChatDialog::sendStatusProbe(quint16 senderPort) {
+  QByteArray datagram;
+  QDataStream datastream(&datagram, QIODevice::ReadWrite);
+  QVariantMap message = QVariantMap();
+  QVariantMap contents = QVariantMap();
+
+  qDebug() << "Sending status probe request message to port: " << senderPort;
+
+  message["Want"] = contents;
+
+  datastream << message;
+  
+  // Send message to the socket. 
+  sock->writeDatagram(&datagram, datagram.size(), senderPort);
 }
 
 // Get list of available ports. 
-void ChatDialog::getPorts() {
-  ports = sock->getPorts();
+QList<quint16> ChatDialog::getPorts() {
+  return sock->getPorts();
+}
+
+void ChatDialog::gotStatusProbeMessage() {
+  NetSocket *sock = this->sock;
+
+  quint16 senderPort;
+  QVariantMap readMessage;
+  // Read each datagram.
+  while (sock->hasPendingDatagrams()) {
+    QByteArray datagram;
+    datagram.resize(sock->pendingDatagramSize());
+    QHostAddress sender;
+
+    sock->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+
+    QDataStream stream(&datagram, QIODevice::ReadOnly);
+
+    stream >> readMessage;
+    datagram.clear();
+  }
+  qDebug() << "Got status probe message from port: " << senderPort;
+  // Check if we have a status message.
+  if (!readMessage["Want"].isNull()) {
+    QElapsedTimer *timer = rttTimers[senderPort];
+    rttResults.append(QPair<quint16, qint64>(senderPort, timer->elapsed()));
+    QByteArray datagram;
+    QDataStream datastream(&datagram, QIODevice::ReadWrite);
+    QVariantMap sendMessage = QVariantMap();
+
+    sendMessage["Want"] = QVariantMap();
+
+    datastream << sendMessage;
+    
+    // Send message to the socket. 
+    sock->writeDatagram(&datagram, datagram.size(), senderPort);
+  } else {
+    qDebug() << "error reading status probe message";
+  }
+    
 }
 
 // Callback when user presses "Enter" in the textline widget.
@@ -240,11 +326,13 @@ void ChatDialog::gotMessage() {
 }
 
 void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
-  // throughout this method, we refer to the originator of the status message as the remote
+  // throughout this method, we refer to the originator of the status
+  // message as the remote
   QVariantMap wantMap = m.value("Want").toMap();
   bool allAreEqual = true;
 
-  // map to hold a list of origins the remote knows about, that way we can check against our list
+  // map to hold a list of origins the remote knows about,
+  // that way we can check against our list
   QVariantMap originsKnownToRemote = QVariantMap();
 
   qDebug() << "Received \"status\" message from port:" << senderPort;
@@ -258,16 +346,13 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
       sendRumorMessage(wantOrigin, mSeqNo, originsMap[wantOrigin][mSeqNo], senderPort);
       allAreEqual = false;
       break;
-      qDebug() << "they're behind";
     } else if (mSeqNo == highestForThisOrigin + 1) {
       // We're both equal.
-      qDebug() << "equal";
     } else {
       // They're ahead of us - we need to send a status.
       sendStatusMessage(senderPort);
       allAreEqual = false;
       break;
-      qDebug() << "we're behind";
     }
   }
 
@@ -408,13 +493,14 @@ QList<quint16> NetSocket::getPorts() {
 }
 
 // Find neighboring ports.
-void NetSocket::findPorts() {
+QList<quint16> NetSocket::findPorts() {
   for (quint16 port = myPortMin; port <= myPortMax; port++) {
     if (port != myPort) {
       // Get a list of ports.
       ports.append(port);
     }
   }
+  return ports;
 }
 
 ////////
