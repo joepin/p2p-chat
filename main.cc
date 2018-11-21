@@ -1,14 +1,4 @@
 
-#include <unistd.h>
-#include <QVBoxLayout>
-#include <QApplication>
-#include <QDebug>
-#include <QDateTime>
-#include <QPair>
-#include <QTimer>
-#include <QColor>
-#include <QSignalMapper>
-#include <algorithm>
 #include "main.hh"
 
 ////////
@@ -243,16 +233,13 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
     quint32 highestForThisOrigin = highestSeqNums[wantOrigin].toInt();
     if (mSeqNo <= highestForThisOrigin) {
       // They're behind.
-      qDebug() << "They're behind.";
       sendRumorMessage(wantOrigin, mSeqNo, originsMap[wantOrigin][mSeqNo], senderPort);
       allAreEqual = false;
       break;
     } else if (mSeqNo == highestForThisOrigin + 1) {
       // We're both equal.
-      qDebug() << "We're equal.";
     } else {
       // They're ahead of us - we need to send a status.
-      qDebug() << "We're behind.";
       sendStatusMessage(senderPort);
       allAreEqual = false;
       break;
@@ -353,7 +340,7 @@ void ChatDialog::timeRumor() {
 void ChatDialog::antiEntropy() {
   int randomIndex = qrand() % ports.size();
   int targetPort = ports.at(randomIndex);
-  qDebug() << "antiEntropy: starting to rumor with port " << targetPort;
+  qDebug() << "antiEntropy: starting to rumor with port " << targetPort << "\n\n\n\n";
   sendStatusMessage(targetPort);
 }
 

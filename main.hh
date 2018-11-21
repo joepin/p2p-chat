@@ -8,6 +8,11 @@
 #include <QHostInfo>
 #include <QUdpSocket>
 #include <QElapsedTimer>
+#include <unistd.h>
+#include <QVBoxLayout>
+#include <QApplication>
+#include <QDebug>
+#include <QDateTime>
 
 #define TIMEOUT 1
 #define ANTI_ENTROPY_TIME 10
