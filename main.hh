@@ -70,6 +70,7 @@ class ChatDialog : public QDialog {
     void gotReturnPressed();
     void gotMessage();
     void timeNeighbors();
+    void timeRumor();
     void antiEntropy();
 
   private:
@@ -84,6 +85,12 @@ class ChatDialog : public QDialog {
     QList<quint16> ports;
     QList<quint16> myNeighbors;
     bool timing;
+    
+    bool rumorTiming;
+    QString rumorOrigin;
+    qint32 rumorSeq;
+    QString rumorText;
+    quint16 rumorPort;
 
     void getPorts();
     void addNeighbors(quint16 port);

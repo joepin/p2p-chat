@@ -58,6 +58,8 @@ ChatDialog::ChatDialog(NetSocket *s) {
   connect(textline, SIGNAL(returnPressed()), this, SLOT(gotReturnPressed()));
   connect(s, SIGNAL(readyRead()), this, SLOT(gotMessage()));
 
+  rumorTiming = false;
+
   QTimer *antiEntropyTimer = new QTimer();
   connect(antiEntropyTimer, SIGNAL(timeout()), this, SLOT(antiEntropy()));
   antiEntropyTimer->start(10000);
@@ -223,6 +225,16 @@ void ChatDialog::gotMessage() {
 
     stream >> message;
 
+    // Block until we receive a status message from the port we sent a
+    // rumor to.
+    if (rumorTiming) {
+      // We have a "status" message from the correct port.
+      if (!message["Want"].isNull() && senderPort == rumorPort) {
+        rumorTiming = false;
+        qDebug() << "We have received the \"status\" we are waiting for.";
+      }
+    }
+
     // Check if we have a status message.
     if (!message["Want"].isNull()) {
       // We have a "status" message.
@@ -240,11 +252,11 @@ void ChatDialog::gotMessage() {
 }
 
 void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
-  // throughout this method, we refer to the originator of the status message as the remote
+  // Throughout this method, we refer to the originator of the status message as the remote
   QVariantMap wantMap = m.value("Want").toMap();
   bool allAreEqual = true;
 
-  // map to hold a list of origins the remote knows about, that way we can check against our list
+  // Map to hold a list of origins the remote knows about, that way we can check against our list
   QVariantMap originsKnownToRemote = QVariantMap();
 
   qDebug() << "Received \"status\" message from port:" << senderPort;
@@ -255,24 +267,24 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
     quint32 highestForThisOrigin = highestSeqNums[wantOrigin].toInt();
     if (mSeqNo <= highestForThisOrigin) {
       // They're behind.
+      qDebug() << "They're behind.";
       sendRumorMessage(wantOrigin, mSeqNo, originsMap[wantOrigin][mSeqNo], senderPort);
       allAreEqual = false;
       break;
-      qDebug() << "they're behind";
     } else if (mSeqNo == highestForThisOrigin + 1) {
       // We're both equal.
-      qDebug() << "equal";
+      qDebug() << "We're equal.";
     } else {
       // They're ahead of us - we need to send a status.
+      qDebug() << "We're behind.";
       sendStatusMessage(senderPort);
       allAreEqual = false;
       break;
-      qDebug() << "we're behind";
     }
   }
 
-  // if the number of origins the remote knows about is less than ours, we need to send them
-  // the first message from each origin we know about that they don't
+  // If the number of origins the remote knows about is less than ours, we need to send them
+  // the first message from each origin we know about that they don't.
   if (originsKnownToRemote.count() < originsMap.count()) {
     for (auto ourOrigin : originsMap.keys()) {
       if (originsKnownToRemote[ourOrigin].isNull()) {
@@ -281,12 +293,12 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
     }
   }
 
-  // if the remote has more origins that we do, we need to request those in our status message
+  // If the remote has more origins that we do, we need to request those in our status message.
   if (originsKnownToRemote.count() > originsMap.count()) {
     for (auto theirOrigin : originsKnownToRemote.keys()) {
       if (originsMap.contains(theirOrigin) == false) {
-        // we don't know about this origin
-        // init this origin to the highest seq #s with a value of 0, effectively asking for the 1st message
+        // We don't know about this origin.
+        // Init this origin to the highest seq #s with a value of 0, effectively asking for the 1st message.
         highestSeqNums[theirOrigin] = 0;
         sendStatusMessage(senderPort);
       }
@@ -302,7 +314,6 @@ void ChatDialog::handleStatusMessage(QVariantMap m, quint16 senderPort) {
     if (heads) {
       for (auto neighbor : myNeighbors) {
         if (neighbor != senderPort) {
-          // sendRumorMessage(myOrigin, mySeqNo, originsMap[myOrigin][mySeqNo], neighbor);
           sendStatusMessage(neighbor);
           break;
         }
@@ -318,7 +329,6 @@ void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
     QString mOrigin = m["Origin"].toString();
     qint32 mSeqNo = m["SeqNo"].toInt();
     QString messageText = "<span style=\"color:'blue';\"><b>" + mOrigin + "</b></span>: " + mText;
-    // QString messageText = mText + " {" + QString::number(mSeqNo) + "@" + mOrigin + "}";
 
     qDebug() << "Received \"rumor\" message from port:" << senderPort
     << ", <\"ChatText\"," << m["ChatText"].toString()
@@ -333,12 +343,35 @@ void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
         saveMessage(mOrigin, mSeqNo, mText);
         // Display the message in the window.
         textview->append(messageText);
+        
         // Propogate the rumor to neighbors.
         sendRumorMessage(mOrigin, mSeqNo, mText, senderPort);
+
+        // Set values for timeout handler.
+        rumorOrigin = mOrigin;
+        rumorSeq = mSeqNo;
+        rumorText = mText;
+        rumorPort = senderPort;
+        rumorTiming = true;
+        
+        // Set timer.
+        QTimer::singleShot(TIMEOUT, this, SLOT(timeRumor()));
+
+        return;
       }
     }
-    // Always send a status message.
     sendStatusMessage(senderPort);
+}
+
+// Handle rumor timeout.
+void ChatDialog::timeRumor() {
+  if (rumorTiming) {
+    qDebug() << "Rumor sending has timed out. Resending the rumor.";
+
+    // Resend the rumor to neighbors.
+    sendRumorMessage(rumorOrigin, rumorSeq, rumorText, rumorPort);
+  }
+  rumorTiming = false;
 }
 
 // Helper function to print the originsMap and corresponding the messagesMap.
