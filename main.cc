@@ -7,6 +7,8 @@
 #include <QPair>
 #include <QTimer>
 #include <QColor>
+#include <QSignalMapper>
+#include <algorithm>
 #include "main.hh"
 
 ////////
@@ -44,19 +46,17 @@ ChatDialog::ChatDialog(NetSocket *s) {
   // Set sequence number beginning at 1.
   mySeqNo = 1;
 
-  // Get available ports.
-  getPorts();
-
-  // Find up to 2 neighbors.
-  getNeighbors();
-
   // Initialize a map to save the highest sequence numbers seen so far.
   highestSeqNums = QVariantMap();
 
   // Register a callback on the textline's returnPressed signal
   // so that we can send the message entered by the user.
   connect(textline, SIGNAL(returnPressed()), this, SLOT(gotReturnPressed()));
+  // register callback on sockets' readyRead signal to read a packet
   connect(s, SIGNAL(readyRead()), this, SLOT(gotMessage()));
+  
+  // begin the process of finding neighbors
+  determineNearestNeighbors();
 
   rumorTiming = false;
 
@@ -67,56 +67,32 @@ ChatDialog::ChatDialog(NetSocket *s) {
 
 // Find the 2 closest (quickest responding) neighbors.
 // If 2 neighbors cannot be found, randomly select 2 ports.
-void ChatDialog::getNeighbors() {
-  // Send a "status" message to all available ports.
-  for (auto port : ports) {
-    qDebug() << "Sending a connection message to:" << port;
-    sendStatusMessage(port);
+void ChatDialog::determineNearestNeighbors() {
+  ports = getPorts();
+
+  for (int i = 0; i < NUM_NEIGHBORS; i++) {
+    int rand;
+    int portToAdd;
+    do {
+      rand = qrand() % ports.size();
+      portToAdd = ports[rand];
+    } while(myNeighbors.contains(portToAdd));
+    myNeighbors.append(portToAdd);
   }
-
-  // Set timer.
-  QTimer::singleShot(TIMEOUT, this, SLOT(timeNeighbors()));
-}
-
-// Add neighbors to the stored list.
-void ChatDialog::addNeighbors(quint16 port) {
-  if (myNeighbors.size() < 2) {
-    // Redundancy check if timeout has occurred.
-    if (timing) {
-      qDebug() << "Received connection response from port:" << port;
-      myNeighbors.append(port);
-    }
+  QElapsedTimer *timer = new QElapsedTimer();
+  const int PING_TIMEOUT = 5000;
+  int remaining = PING_TIMEOUT;
+  timer->start();
+  while (remaining > 0) {
+    remaining = PING_TIMEOUT - timer->elapsed();
   }
-}
-
-// Timeout handler for finding neighbors.
-void ChatDialog::timeNeighbors() {
-  timing = false;
-
-  qDebug() << "Port finding has timed out.";
-
-  // If ports have not been chosen, randomly select two ports.
-  if (myNeighbors.size() < 2) {
-    qsrand(qrand());
-    if (myNeighbors.size() == 1) {
-      // Add 1 random port.
-      QList<quint16> tempPorts = ports;
-      tempPorts.removeOne(myNeighbors.at(0));
-      int rand = qrand() % tempPorts.size();
-      myNeighbors.append(tempPorts.at(rand));
-    } else {
-      // Select 2 random ports.
-      int rand = qrand() % ports.size();
-      myNeighbors = ports;
-      myNeighbors.removeAt(rand);
-    }
-  }
-  qDebug() << "Neighbor ports chosen:" << myNeighbors[0] << "," << myNeighbors[1];
+  
+  qDebug() << "myNeighbors are: " << myNeighbors;
 }
 
 // Get list of available ports. 
-void ChatDialog::getPorts() {
-  ports = sock->getPorts();
+QList<quint16> ChatDialog::getPorts() {
+  return sock->getPorts();
 }
 
 // Callback when user presses "Enter" in the textline widget.
@@ -374,17 +350,6 @@ void ChatDialog::timeRumor() {
   rumorTiming = false;
 }
 
-// Helper function to print the originsMap and corresponding the messagesMap.
-void ChatDialog::prettyPrintMaps() {
-  for (auto origin : originsMap.keys()) {
-    qDebug() << origin;
-    Messages messages = originsMap.value(origin);
-    for (auto message : messages.keys()) {
-      qDebug() << message << ", " << messages.value(message);
-    }
-  }
-}
-
 void ChatDialog::antiEntropy() {
   int randomIndex = qrand() % ports.size();
   int targetPort = ports.at(randomIndex);
@@ -441,13 +406,14 @@ QList<quint16> NetSocket::getPorts() {
 }
 
 // Find neighboring ports.
-void NetSocket::findPorts() {
+QList<quint16> NetSocket::findPorts() {
   for (quint16 port = myPortMin; port <= myPortMax; port++) {
     if (port != myPort) {
       // Get a list of ports.
       ports.append(port);
     }
   }
+  return ports;
 }
 
 ////////
