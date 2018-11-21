@@ -3,10 +3,12 @@
 ######################################################################
 
 TEMPLATE = app
-TARGET = 
+TARGET = p2papp
 DEPENDPATH += .
 INCLUDEPATH += .
 QT += network
+QT += widgets
+CONFIG += sdk_no_version_check
 
 # Input
 HEADERS += main.hh
