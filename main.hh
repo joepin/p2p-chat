@@ -66,10 +66,6 @@ class ChatDialog : public QDialog {
     
     void handleStatusMessage(QVariantMap, quint16);
     void handleRumorMessage(QVariantMap, quint16);
-    
-    void prettyPrintMaps();
-
-    void sendStatusProbe(quint16);
 
   public slots:
     void gotReturnPressed();
@@ -86,20 +82,12 @@ class ChatDialog : public QDialog {
     
     QVariantMap highestSeqNums;
     QList<quint16> myNeighbors;
-    bool timing;
 
     QList<quint16> ports;
-    QList<quint16> portsToPing;
-    QMap<quint16, QElapsedTimer*> rttTimers;
-    QMap<quint16, qint64> rttResults;
 
     QList<quint16> getPorts();
     void determineNearestNeighbors();
-    void handleProbeMessage(quint16);
 };
-
-bool compareRTTResults(const QPair<quint16, qint64> &a,
-  const QPair<quint16, qint64> &b);
 
 ////////
 

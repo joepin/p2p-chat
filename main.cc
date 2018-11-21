@@ -66,136 +66,31 @@ ChatDialog::ChatDialog(NetSocket *s) {
 // Find the 2 closest (quickest responding) neighbors.
 // If 2 neighbors cannot be found, randomly select 2 ports.
 void ChatDialog::determineNearestNeighbors() {
-  timing = true;
-  // init variables for getting close neigbors
-  portsToPing = QList<quint16>();
-  rttResults = QMap<quint16, qint64>();
   ports = getPorts();
-  portsToPing = getPorts();
 
-  int retries = 10;
-
-  rttTimers = QMap<quint16, QElapsedTimer*>();
-  QElapsedTimer *pingingTimer = new QElapsedTimer();
-
-  pingingTimer->start();
-  while(retries > 0 && portsToPing.size() > 0) {
-    qDebug() << "\n\nattempts remaining: " << retries;
-    pingingTimer->restart();
-    // Send a "status" message to all available ports.
-    int pingTimeout = 1000;
-    for (auto port : portsToPing) {
-      qDebug() << "Sending a status probe to:" << port;
-      QElapsedTimer *rttTimer = new QElapsedTimer();
-      rttTimers[port] = rttTimer;
-      rttTimer->start();
-      sendStatusProbe(port);
-    }
-
-    int remaining = pingTimeout - pingingTimer->elapsed();
-    while (remaining > 0) {
-      // implement our own readyRead
-      if (sock->hasPendingDatagrams()) {
-        gotMessage();
-      }
-      remaining = pingTimeout - pingingTimer->elapsed();
-    }
-    retries--;
+  for (int i = 0; i < NUM_NEIGHBORS; i++) {
+    int rand;
+    int portToAdd;
+    do {
+      rand = qrand() % ports.size();
+      portToAdd = ports[rand];
+    } while(myNeighbors.contains(portToAdd));
+    myNeighbors.append(portToAdd);
   }
-
-  timing = false;
-
-  qDebug() << "\n\n\nrttResults: " << rttResults;
-  for (auto port : ports) {
-    if (rttResults.contains(port)) {
-      qDebug() << "results for port: " << port << ":" << rttResults[port];
-    }
+  QElapsedTimer *timer = new QElapsedTimer();
+  const int PING_TIMEOUT = 5000;
+  int remaining = PING_TIMEOUT;
+  timer->start();
+  while (remaining > 0) {
+    remaining = PING_TIMEOUT - timer->elapsed();
   }
-
-  QVector<QPair<quint16, qint64>> results = QVector<QPair<quint16, qint64>>();
-  for (auto port : rttResults) {
-    results.append(QPair<quint16, qint64>(port, rttResults[port]));
-  }
-  std::sort(results.begin(), results.end(), compareRTTResults);
-
-  for (int i = 0; i < NUM_NEIGHBORS && i < results.count(); i++) {
-    myNeighbors.append(results[i].first);
-  }
-  if (myNeighbors.count() < NUM_NEIGHBORS) {
-    for (int i = myNeighbors.count(); i < NUM_NEIGHBORS; i++) {
-      int rand = qrand() % ports.size();
-      int portToAdd = ports[rand];
-      while(myNeighbors.contains(portToAdd)) {
-        rand = qrand() % ports.size();
-        portToAdd = ports[rand];
-      }
-      myNeighbors.append(portToAdd);
-    }
-  }
-  qDebug() << "\n\n\n\nmyNeighbors are: " << myNeighbors;
-}
-
-// comparator function to sort pairs by second key in ascending order
-bool compareRTTResults(const QPair<quint16, qint64> &a,
-  const QPair<quint16, qint64> &b) {
-    return (a.second < b.second); 
-} 
-
-/*// Add neighbors to the stored list.
-void ChatDialog::addNeighbors(quint16 port) {
-  if (myNeighbors.size() < 2) {
-    // Redundancy check if timeout has occurred.
-    if (timing) {
-      qDebug() << "Received connection response from port:" << port;
-      myNeighbors.append(port);
-    }
-  }
-
-  // If ports have not been chosen, randomly select two ports.
-  if (myNeighbors.size() < 2) {
-    qsrand(qrand());
-    if (myNeighbors.size() == 1) {
-      // Add 1 random port.
-      QList<quint16> tempPorts = ports;
-      tempPorts.removeOne(myNeighbors.at(0));
-      int rand = qrand() % tempPorts.size();
-      myNeighbors.append(tempPorts.at(rand));
-    } else {
-      // Select 2 random ports.
-      int rand = qrand() % ports.size();
-      myNeighbors = ports;
-      myNeighbors.removeAt(rand);
-    }
-  }
-  qDebug() << "Neighbor ports chosen:" << myNeighbors[0] << "," << myNeighbors[1];
-}*/
-
-void ChatDialog::sendStatusProbe(quint16 senderPort) {
-  QByteArray datagram;
-  QDataStream datastream(&datagram, QIODevice::ReadWrite);
-  QVariantMap message = QVariantMap();
-
-  qDebug() << "Sending status probe request message to port: " << senderPort;
-
-  message["Want"] = QVariantMap();
-
-  datastream << message;
   
-  // Send message to the socket. 
-  sock->writeDatagram(&datagram, datagram.size(), senderPort);
+  qDebug() << "myNeighbors are: " << myNeighbors;
 }
 
 // Get list of available ports. 
 QList<quint16> ChatDialog::getPorts() {
   return sock->getPorts();
-}
-
-void ChatDialog::handleProbeMessage(quint16 port) {
-  qint64 time = rttTimers[port]->elapsed();
-  qDebug() << "Got status probe message from port: " << port << ", time is: " << time;
-  rttResults[port] = time;
-  rttTimers[port]->invalidate();
-  portsToPing.removeOne(port);
 }
 
 // Callback when user presses "Enter" in the textline widget.
@@ -307,11 +202,7 @@ void ChatDialog::gotMessage() {
     // Check if we have a status message.
     if (!message["Want"].isNull()) {
       // We have a "status" message.
-      if (timing) {
-        handleProbeMessage(senderPort);
-      } else {
-        handleStatusMessage(message, senderPort);
-      }
+      handleStatusMessage(message, senderPort);
     } else if (!message["ChatText"].isNull()) {
       // We have a "rumor" message.
       handleRumorMessage(message, senderPort);
@@ -423,17 +314,6 @@ void ChatDialog::handleRumorMessage(QVariantMap m, quint16 senderPort) {
     }
     // Always send a status message.
     sendStatusMessage(senderPort);
-}
-
-// Helper function to print the originsMap and corresponding the messagesMap.
-void ChatDialog::prettyPrintMaps() {
-  for (auto origin : originsMap.keys()) {
-    qDebug() << origin;
-    Messages messages = originsMap.value(origin);
-    for (auto message : messages.keys()) {
-      qDebug() << message << ", " << messages.value(message);
-    }
-  }
 }
 
 void ChatDialog::antiEntropy() {
