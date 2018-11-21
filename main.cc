@@ -340,7 +340,7 @@ void ChatDialog::timeRumor() {
 void ChatDialog::antiEntropy() {
   int randomIndex = qrand() % ports.size();
   int targetPort = ports.at(randomIndex);
-  qDebug() << "antiEntropy: starting to rumor with port " << targetPort << "\n\n\n\n";
+  qDebug() << "\n\n\n\nantiEntropy: starting to rumor with port " << targetPort << "\n";
   sendStatusMessage(targetPort);
 }
 
