@@ -74,9 +74,7 @@ class ChatDialog : public QDialog {
   public slots:
     void gotReturnPressed();
     void gotMessage();
-    void timeNeighbors(quint16);
     void antiEntropy();
-    void gotStatusProbeMessage();
 
   private:
     QTextEdit *textview;
@@ -91,12 +89,13 @@ class ChatDialog : public QDialog {
     bool timing;
 
     QList<quint16> ports;
+    QList<quint16> portsToPing;
     QMap<quint16, QElapsedTimer*> rttTimers;
-    QVector<QPair<quint16, qint64>> rttResults;
-    quint16 rttCounter;
+    QMap<quint16, qint64> rttResults;
 
     QList<quint16> getPorts();
     void determineNearestNeighbors();
+    void handleProbeMessage(quint16);
 };
 
 bool compareRTTResults(const QPair<quint16, qint64> &a,
